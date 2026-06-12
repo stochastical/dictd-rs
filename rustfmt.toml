@@ -1,0 +1,4 @@
+# https://github.com/rust-lang/rustfmt/blob/main/Configurations.md
+# cargo +nightly fmt
+enum_discrim_align_threshold = 40
+struct_field_align_threshold = 20
