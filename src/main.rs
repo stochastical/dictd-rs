@@ -1,44 +1,99 @@
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 
-const DICT_SERVER_PORT: u16 = 2628; // TODO what type for port numbers?
+const DICT_SERVER_PORT: u16 = 2628;
 const LINE_BUFFER_MAX_CHARS: usize = 1024;
 const LINE_BUFFER_MAX_BYTES: usize = 6144; // 1024 * 6
+const MIME_HEADER: &'static str =
+    "Content-type: text/plain; charset=utf-8\n\rContent-transfer-encoding: 8bit";
 
+// I think that since the spec has a max line buffer limit, I can pre-allocate and don't need to bother with a buffered reader....
+// Also, what's the best way to be 'literate' about this?
+// Should I inline the spec with the corresponding function implementations etc?
+
+/// I think we can bubble errors through here (e.g. client disconnects, and let the caller process it)
 fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
+    // TODO: it'd be nice to return a StatusResponse maybe?
     eprintln!("New client connection: {:#?}", &stream);
-    let mut buffer = [0; LINE_BUFFER_MAX_BYTES];
-    let bytes_read: usize = stream.read(&mut buffer)?;
+    loop {
+        let mut buffer = [0; LINE_BUFFER_MAX_BYTES];
+        let bytes_read: usize = stream.read(&mut buffer)?;
 
-    if let Ok(command) = str::from_utf8(&buffer[..bytes_read]) {
-        assert!(command.len() <= LINE_BUFFER_MAX_CHARS);
-        dbg!(command);
-        // let status = StatusResponse::ServerTemporarilyUnavailable as u16;
-        let status = StatusResponse::ServerTemporarilyUnavailable.discriminant();
-        stream.write(format!("{status}\r\n").as_bytes())?;
-    } else { // TODO require UTF-8 input??
-        eprintln!("Client sent non-UTF-8 input.");
-        // let status = StatusResponse::SyntaxErrorCommandNotRecognised as u16;
-        let status = StatusResponse::SyntaxErrorCommandNotRecognised.discriminant();
-        stream.write(format!("{status}\r\n").as_bytes())?;
+        if let Ok(command_line) = str::from_utf8(&buffer[..bytes_read]) {
+            assert!(command_line.len() <= LINE_BUFFER_MAX_CHARS);
+            dbg!(command_line); // dbg!(command.lines().collect::<Vec<_>>());
+
+            let command = Command::try_from(command_line);
+            // ^ SO THE EXPECTATION IS THAT THE COMMAND WILL BE WELL-FORMED AT THIS POINT?
+
+            match command {
+                Ok(Command::Quit) => {
+                    let status_code = StatusResponse::Quit.discriminant();
+                    stream.write(format!("{status_code}\r\n").as_bytes())?;
+                    return Ok(());
+                }
+                Ok(Command::Help) => {
+                    unimplemented!()
+                }
+                Ok(Command::Client { text }) => {
+                    unimplemented!()
+                }
+                Ok(Command::Define { database, word }) => {
+                    unimplemented!()
+                }
+                Ok(Command::Match {
+                    database,
+                    strategy,
+                    word,
+                }) => {
+                    unimplemented!()
+                }
+                Ok(Command::Show(_)) => {
+                    unimplemented!()
+                }
+
+                Ok(Command::Status) => {
+                    unimplemented!()
+                }
+                Ok(Command::OptionMIME) => {
+                    unimplemented!()
+                }
+                Ok(Command::Auth { .. }) | Ok(Command::SASLAuth { .. }) => {
+                    unimplemented!()
+                }
+                Err(status) => {
+                    let status_code = status.discriminant();
+                    stream.write(format!("{status_code} bye\r\n").as_bytes())?;
+                }
+            }
+        } else {
+            eprintln!("Client sent invalid UTF-8.");
+            let status = StatusResponse::SyntaxErrorCommandNotRecognised.discriminant();
+            stream.write(format!("{status}\r\n").as_bytes())?;
+        }
     }
-    Ok(())
 }
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind(format!("127.0.0.1:{DICT_SERVER_PORT}"))?;
 
-
     // accept connections and process them serially
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
-                match handle_connection(stream) {
-                    Ok(_handled) => { eprintln!("Client connection completed.") }
-                    Err(e) => { eprintln!("Client disconnected {e}.")}
+            Ok(stream) => match handle_connection(stream) {
+                Ok(_handled) => {
+                    // let status_code = status.discriminant();
+                    // stream.write(format!("{status_code}\r\n").as_bytes())?;
+                    // ^ hmm, at this point we can't access the stream anymore!
+                    eprintln!("Client connection completed.");
                 }
+                Err(e) => {
+                    eprintln!("Client disconnected {e}.")
+                }
+            },
+            Err(e) => {
+                eprintln!("{e}")
             }
-            Err(e) => { eprintln!("{e}")}
         }
     }
     Ok(())
@@ -72,15 +127,18 @@ fn main() -> std::io::Result<()> {
 // lines.  Since UTF-8 may encode a character using up to 6 octets, the
 // command line buffer MUST be able to accept up to 6144 octets.
 
-const MIME_HEADER: &'static str =
-    "Content-type: text/plain; charset=utf-8\n\rContent-transfer-encoding: 8bit";
-
 #[derive(Debug)]
 #[repr(u16)]
 enum StatusResponse {
     // 1yz - Positive Preliminary reply
-    DatabasesPresent(u8)               = 110, // * 110 n databases present - text follows
-    StrategiesAvailable             = 111, // * 111 n strategies available - text follows
+    DatabasesPresent {
+        n_databases: u8,
+        text:        String,
+    } = 110, // * 110 n databases present - text follows
+    StrategiesAvailable {
+        n_strategies: u8,
+        strategies:   Vec<SearchStrategy>,
+    } = 111, // * 111 n strategies available - text follows
     DatabaseInformation             = 112, // 112 database information follows
     Help                            = 113, // 113 help text follows
     ServerInformation               = 114, // 114 server information follows
@@ -120,9 +178,16 @@ enum StatusResponse {
 }
 
 impl StatusResponse {
-    fn discriminant(&self) -> u8 {
-        unsafe { *(self as *const Self as *const u8) }
+    /// TODO: may be buggy?
+    fn discriminant(&self) -> u16 {
+        unsafe { *(self as *const Self as *const u16) }
     }
+
+    // fn status_code(&self) -> u16 {
+    //     match self {
+
+    //     }
+    // }
 }
 
 // #[derive(Debug)]
@@ -132,68 +197,88 @@ impl StatusResponse {
 //     DatabaseInformation(u8),  // 112 database information follows
 // }
 
-impl TryFrom<&str> for Command {
-    type Error = StatusResponse;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let tokens: Vec<&str> = value.split_ascii_whitespace().collect();
-        match tokens[0].to_uppercase().as_str() {
-            "QUIT" => Ok(Command::Quit),
-            _ => Err(StatusResponse::SyntaxErrorCommandNotRecognised),
-        }
-    } // TODO
-}
-
-// 3.3.  The MATCH Command
-
-// MATCH database strategy word
+/// TODO: should a command be coupled with a status code using a const function???
 
 #[derive(Debug)]
 enum Command {
-    // DEFINE database word
+    /// DEFINE database word
     Define {
         database: Database,
         word:     String,
     },
 
-    // MATCH database strategy word
+    /// MATCH database strategy word
     Match {
         database: Database,
         strategy: SearchStrategy,
         word:     Word,
     },
 
-    // SHOW DB or SHOW DATABASES
-    // SHOW STRAT or SHOW STRATEGIES
-    // SHOW INFO database
-    // SHOW SERVER
+    /// SHOW DB or SHOW DATABASES
+    /// SHOW STRAT or SHOW STRATEGIES
+    /// SHOW INFO database
+    /// SHOW SERVER
     Show(ShowArgument),
 
-    //  CLIENT text
-    Client {
-        text: String,
-    },
+    ///  CLIENT text
+    Client { text: String },
 
+    /// STATUS
     Status,
 
+    /// HELP
     Help,
 
+    /// QUIT
     Quit,
 
+    /// OPTION MIME
     OptionMIME,
 
-    // AUTH username authentication-string
+    /// AUTH username authentication-string
     Auth {
         username:              String,
         authentication_string: String,
     },
 
-    // SASLAUTH mechanism initial-response
-    // SASLRESP response
+    /// SASLAUTH mechanism initial-response
+    /// SASLRESP response
     SASLAuth {
         mechanism:        String,
         initial_response: Option<String>,
     },
+}
+
+impl TryFrom<&str> for Command {
+    type Error = StatusResponse;
+
+    #[rustfmt::skip]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let tokens: Vec<&str> = dbg!(value.split_ascii_whitespace().collect());
+
+        match dbg!(tokens[0].to_uppercase().as_str()) {
+            // "DEFINE" => if let () ==  {
+            //     Ok(Command::Define { database: (), word: () })
+            // }, // TODO: need to continue parsing (is that recursive parser or something)
+            "DEFINE"   => unimplemented!(),
+            "MATCH"    => unimplemented!(),
+            "SHOW"     => unimplemented!(),
+            "CLIENT"   => unimplemented!(),
+            "STATUS"   => Ok(Command::Status),
+            "HELP"     => Ok(Command::Help),
+            "QUIT"     => Ok(Command::Quit),
+            "OPTION"   => { 
+                match dbg!(tokens[1].to_uppercase().as_str()) {
+                    "MIME" => Ok(Command::OptionMIME),
+                    _      => Err(StatusResponse::SyntaxErrorIllegalParameters)
+                }
+            },
+            "AUTH"     => unimplemented!(),
+            "SASLAUTH" 
+            | "SASLRESP" 
+            | _        => Err(StatusResponse::SyntaxErrorCommandNotRecognised),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -217,15 +302,18 @@ enum SearchStrategy {
     Prefix,
     Default, // '.'
 
-    // Unsupported
-    // Substring,
-    // Suffix,
-    // Regex,
-    // Soundex,
-    // Levenshtein
+             // Unsupported
+             // Substring,
+             // Suffix,
+             // Regex,
+             // Soundex,
+             // Levenshtein
 }
 
 #[derive(Debug)]
 struct Word {
     definitions: Vec<String>,
 }
+
+#[cfg(test)]
+mod test;
