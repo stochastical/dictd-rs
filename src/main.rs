@@ -138,7 +138,7 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
                         .as_bytes(),
                 )?;
             }
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
     Ok(())
@@ -168,34 +168,6 @@ fn main() -> std::io::Result<()> {
     }
     Ok(())
 }
-
-// https://curl.se/rfc/rfc2229.txt
-//
-// 2.3 Commands
-//
-// Commands consist of a command word followed by zero or more
-// parameters.  Commands with parameters must separate the parameters
-// from each other and from the command by one or more space or tab
-// characters.  Command lines must be complete with all required
-// parameters, and may not contain more than one command.
-//
-//    Each command line must be terminated by a CRLF.
-//
-//    The grammar for commands is:
-//
-//              command     = cmd-word *<WS cmd-param>
-//              cmd-word    = atom
-//              cmd-param   = database / strategy / word
-//              database    = atom
-//              strategy    = atom
-//
-//    Commands are not case sensitive.
-//
-// Command lines MUST NOT exceed 1024 characters in length, counting all
-// characters including spaces, separators, punctuation, and the
-// trailing CRLF.  There is no provision for the continuation of command
-// lines.  Since UTF-8 may encode a character using up to 6 octets, the
-// command line buffer MUST be able to accept up to 6144 octets.
 
 #[derive(Debug)]
 enum StatusResponse {

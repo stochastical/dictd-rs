@@ -1,4 +1,4 @@
-use std::env::Args;
+use std::{env::Args, option};
 
 use crate::types::{DatabaseLookupStrategy, SearchStrategy};
 
@@ -17,6 +17,30 @@ pub enum ShowArgument {
     Server,
 }
 
+/// https://curl.se/rfc/rfc2229.txt
+///
+/// 2.3 Commands
+/// Commands consist of a command word followed by zero or more
+/// parameters.  Commands with parameters must separate the parameters
+/// from each other and from the command by one or more space or tab
+/// characters.  Command lines must be complete with all required
+/// parameters, and may not contain more than one command.
+///
+/// Each command line must be terminated by a CRLF.
+///
+/// The grammar for commands is:
+///
+///              command     = cmd-word *<WS cmd-param>
+///              cmd-word    = atom
+///              cmd-param   = database / strategy / word
+///              database    = atom
+///              strategy    = atom
+/// Commands are not case sensitive.
+/// Command lines MUST NOT exceed 1024 characters in length, counting all
+/// characters including spaces, separators, punctuation, and the
+/// trailing CRLF.  There is no provision for the continuation of command
+/// lines.  Since UTF-8 may encode a character using up to 6 octets, the
+/// command line buffer MUST be able to accept up to 6144 octets.
 #[derive(Debug)]
 pub enum Command {
     /// DEFINE database word
@@ -68,7 +92,9 @@ impl TryFrom<&str> for Command {
         dbg!(&tokens);
 
         match tokens.as_slice() {
-            [] => Err(ParseError::InvalidCommand), // TODO: I don't want to 
+            [] => Err(ParseError::InvalidCommand), // TODO: newlines will be counted as empty (invalid) commands
+
+            // DEFINE database word
             [cmd, database, word] if cmd.eq_ignore_ascii_case("DEFINE") => Ok(Command::Define {
                 database: match *database {
                     "!" => DatabaseLookupStrategy::First,
@@ -77,6 +103,8 @@ impl TryFrom<&str> for Command {
                 },
                 word:     word.to_string(),
             }),
+
+            // MATCH database strategy word
             [cmd, database, strategy, word] if cmd.eq_ignore_ascii_case("MATCH") => {
                 Ok(Command::Match {
                     database: match *database {
@@ -92,9 +120,14 @@ impl TryFrom<&str> for Command {
                     },
                     word:     word.to_string(),
                 })
-            },
+            }
+
+            // SHOW DB | DATABASES
+            // SHOW STRAT | STRATEGIES
+            // SHOW SERVER
+            // SHOW INFO database
             [cmd, rest @ ..] if cmd.eq_ignore_ascii_case("SHOW") => match rest {
-                [arg] => match arg.to_uppercase().as_ref() {
+                [arg] => match arg.to_uppercase().as_str() {
                     "DB" | "DATABASES" => Ok(Command::Show(ShowArgument::Databases)),
                     "STRAT" | "STRATEGIES" => Ok(Command::Show(ShowArgument::Strategies)),
                     "SERVER" => Ok(Command::Show(ShowArgument::Server)),
@@ -107,17 +140,38 @@ impl TryFrom<&str> for Command {
                 }
                 _ => Err(ParseError::InvalidArguments),
             },
-            [cmd, "MIME"] if cmd.eq_ignore_ascii_case("OPTION") => Ok(Command::OptionMIME),
-            [cmd, info] if cmd.eq_ignore_ascii_case("CLIENT") => Ok(Command::Client {
-                text: info.to_string(),
+
+            //  CLIENT text
+            [cmd, info @ ..] if cmd.eq_ignore_ascii_case("CLIENT") => Ok(Command::Client {
+                text: info.join(" ").to_string(),
             }),
+
+            // STATUS
+            [cmd] if cmd.eq_ignore_ascii_case("STATUS") => Ok(Command::Status),
+
+            // HELP
+            [cmd] if cmd.eq_ignore_ascii_case("HELP") => Ok(Command::Help),
+
+            // QUIT
+            [cmd] if cmd.eq_ignore_ascii_case("QUIT") => Ok(Command::Quit),
+
+            // OPTION MIME
+            [cmd, opt]
+                if cmd.eq_ignore_ascii_case("OPTION") && opt.eq_ignore_ascii_case("MIME") =>
+            {
+                Ok(Command::OptionMIME)
+            },
+            // [cmd, ..]
+            //     if cmd.eq_ignore_ascii_case("OPTION") =>
+            // {
+            //     Err(ParseError::InvalidArguments)
+            // },
+           
+            // AUTH username authentication-string
             [cmd, user, auth_string] if cmd.eq_ignore_ascii_case("AUTH") => Ok(Command::Auth {
-                username: user.to_string(),
+                username:              user.to_string(),
                 authentication_string: auth_string.to_string(),
             }),
-            [cmd] if cmd.eq_ignore_ascii_case("STATUS") => Ok(Command::Status),
-            [cmd] if cmd.eq_ignore_ascii_case("HELP") => Ok(Command::Help),
-            [cmd] if cmd.eq_ignore_ascii_case("QUIT") => Ok(Command::Quit),
             _ => Err(ParseError::InvalidCommand),
         }
     }
