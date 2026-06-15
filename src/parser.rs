@@ -7,6 +7,8 @@ use crate::types::{DatabaseLookupStrategy, SearchStrategy};
 pub enum ParseError {
     InvalidCommand,
     InvalidArguments,
+    InvalidStrategy,
+    InvalidDatabase,
 }
 
 #[derive(Debug)]
@@ -91,11 +93,13 @@ impl TryFrom<&str> for Command {
         let tokens: Vec<&str> = value.split_ascii_whitespace().collect();
         dbg!(&tokens);
 
-        match tokens.as_slice() {
-            [] => Err(ParseError::InvalidCommand), // TODO: newlines will be counted as empty (invalid) commands
+        let Some(cmd) = tokens.first() else {
+            return Err(ParseError::InvalidCommand);
+        };
 
+        match (cmd.to_uppercase().as_str(), &tokens[1..]) {
             // DEFINE database word
-            [cmd, database, word] if cmd.eq_ignore_ascii_case("DEFINE") => Ok(Command::Define {
+            ("DEFINE", [database, word]) => Ok(Command::Define {
                 database: match *database {
                     "!" => DatabaseLookupStrategy::First,
                     "*" => DatabaseLookupStrategy::All,
@@ -103,75 +107,69 @@ impl TryFrom<&str> for Command {
                 },
                 word:     word.to_string(),
             }),
+            ("DEFINE", _) => Err(ParseError::InvalidArguments),
 
             // MATCH database strategy word
-            [cmd, database, strategy, word] if cmd.eq_ignore_ascii_case("MATCH") => {
-                Ok(Command::Match {
-                    database: match *database {
-                        "!" => DatabaseLookupStrategy::First,
-                        "*" => DatabaseLookupStrategy::All,
-                        db_name => DatabaseLookupStrategy::Named(db_name.to_string()),
-                    },
-                    strategy: match strategy.to_uppercase().as_str() {
-                        "." => SearchStrategy::Default,
-                        "EXACT" => SearchStrategy::Exact,
-                        "PREFIX" => SearchStrategy::Prefix,
-                        _ => return Err(ParseError::InvalidArguments),
-                    },
-                    word:     word.to_string(),
-                })
-            }
+            ("MATCH", [database, strategy, word]) => Ok(Command::Match {
+                database: match *database {
+                    "!" => DatabaseLookupStrategy::First,
+                    "*" => DatabaseLookupStrategy::All,
+                    db_name => DatabaseLookupStrategy::Named(db_name.to_string()),
+                },
+                strategy: match strategy.to_uppercase().as_str() {
+                    "." => SearchStrategy::Default,
+                    "EXACT" => SearchStrategy::Exact,
+                    "PREFIX" => SearchStrategy::Prefix,
+                    _ => return Err(ParseError::InvalidStrategy), // TODO: is this considered validation?
+                },
+                word:     word.to_string(),
+            }),
+            ("MATCH", _) => Err(ParseError::InvalidArguments),
 
             // SHOW DB | DATABASES
             // SHOW STRAT | STRATEGIES
             // SHOW SERVER
             // SHOW INFO database
-            [cmd, rest @ ..] if cmd.eq_ignore_ascii_case("SHOW") => match rest {
-                [arg] => match arg.to_uppercase().as_str() {
-                    "DB" | "DATABASES" => Ok(Command::Show(ShowArgument::Databases)),
-                    "STRAT" | "STRATEGIES" => Ok(Command::Show(ShowArgument::Strategies)),
-                    "SERVER" => Ok(Command::Show(ShowArgument::Server)),
+            ("SHOW", [arg, rest @ ..]) => match arg.to_uppercase().as_str() {
+                "DB" | "DATABASES" => Ok(Command::Show(ShowArgument::Databases)),
+                "STRAT" | "STRATEGIES" => Ok(Command::Show(ShowArgument::Strategies)),
+                "SERVER" => Ok(Command::Show(ShowArgument::Server)),
+
+                "INFO" => match rest {
+                    [db_name] => Ok(Command::Show(ShowArgument::Info {
+                        database: DatabaseLookupStrategy::Named(db_name.to_string()),
+                    })),
                     _ => Err(ParseError::InvalidArguments),
                 },
-                [arg, db_name] if arg.eq_ignore_ascii_case("INFO") => {
-                    Ok(Command::Show(ShowArgument::Info {
-                        database: DatabaseLookupStrategy::Named(db_name.to_string()),
-                    }))
-                }
+
                 _ => Err(ParseError::InvalidArguments),
             },
 
             //  CLIENT text
-            [cmd, info @ ..] if cmd.eq_ignore_ascii_case("CLIENT") => Ok(Command::Client {
+            ("CLIENT", [info @ ..]) => Ok(Command::Client {
                 text: info.join(" ").to_string(),
             }),
 
             // STATUS
-            [cmd] if cmd.eq_ignore_ascii_case("STATUS") => Ok(Command::Status),
+            ("STATUS", []) => Ok(Command::Status),
 
             // HELP
-            [cmd] if cmd.eq_ignore_ascii_case("HELP") => Ok(Command::Help),
+            ("HELP", []) => Ok(Command::Help),
 
             // QUIT
-            [cmd] if cmd.eq_ignore_ascii_case("QUIT") => Ok(Command::Quit),
+            ("QUIT", []) => Ok(Command::Quit),
 
             // OPTION MIME
-            [cmd, opt]
-                if cmd.eq_ignore_ascii_case("OPTION") && opt.eq_ignore_ascii_case("MIME") =>
-            {
-                Ok(Command::OptionMIME)
-            },
-            // [cmd, ..]
-            //     if cmd.eq_ignore_ascii_case("OPTION") =>
-            // {
-            //     Err(ParseError::InvalidArguments)
-            // },
-           
+            ("OPTION", [opt]) if opt.eq_ignore_ascii_case("MIME") => Ok(Command::OptionMIME),
+            ("OPTION", _) => Err(ParseError::InvalidArguments),
+
             // AUTH username authentication-string
-            [cmd, user, auth_string] if cmd.eq_ignore_ascii_case("AUTH") => Ok(Command::Auth {
-                username:              user.to_string(),
-                authentication_string: auth_string.to_string(),
+            ("AUTH", [username, authentication_string]) => Ok(Command::Auth {
+                username:              username.to_string(),
+                authentication_string: authentication_string.to_string(),
             }),
+            ("AUTH", _) => Err(ParseError::InvalidArguments),
+
             _ => Err(ParseError::InvalidCommand),
         }
     }
