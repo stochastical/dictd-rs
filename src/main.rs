@@ -11,7 +11,7 @@ const DICT_SERVER_PORT: u16 = 2628;
 const LINE_BUFFER_MAX_CHARS: usize = 1024;
 const LINE_BUFFER_MAX_BYTES: usize = 6144; // 1024 * 6
 const MIME_HEADER: &'static str =
-    "Content-type: text/plain; charset=utf-8\n\rContent-transfer-encoding: 8bit";
+    "Content-type: text/plain; charset=utf-8\r\nContent-transfer-encoding: 8bit";
 
 const HELP_LINES: &[&str] = &[
     "DEFINE database word         -- look up word in database",
