@@ -304,14 +304,22 @@ impl StatusResponse {
             status @ SyntaxErrorCommandNotRecognised => {
                 format!("{} unknown command\r\n", status.status_code())
             }
-            status @ SyntaxErrorIllegalParameters => todo!(),
+            status @ SyntaxErrorIllegalParameters => {
+                format!(
+                    "{} syntax error, illegal parameters\r\n",
+                    status.status_code()
+                )
+            }
             status @ CommandNotImplemented => todo!(),
             status @ CommandParameterNotImplemented => todo!(),
             status @ AccessDeniedIPBlocked => todo!(),
             status @ AccessDenied => todo!(),
             status @ SASLUnknownMechanism => todo!(),
             status @ InvalidDatabase => todo!(),
-            status @ InvalidStrategy => todo!(),
+            status @ InvalidStrategy => format!(
+                "{} invalid strategy, use SHOW STRAT for a list\r\n",
+                status.status_code()
+            ),
             status @ NoMatch => format!("{} no match\r\n", status.status_code()),
             status @ NoDatabasesPresent => todo!(),
             status @ NoStrategiesAvailable => todo!(),
