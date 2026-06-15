@@ -4,7 +4,7 @@ use std::net::{TcpListener, TcpStream};
 mod parser;
 mod types;
 
-use parser::{Command, ParseError};
+use parser::{Command};
 use types::{Database, DatabaseLookupStrategy, Definition, SearchStrategy};
 
 const DICT_SERVER_PORT: u16 = 2628;
@@ -116,29 +116,35 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
             }
 
             Ok(Command::Status) => {
-                unimplemented!()
+                stream.write_all(StatusResponse::Status.response_text().as_bytes())?;
             }
             Ok(Command::OptionMIME) => {
-                unimplemented!()
+                // WARNING: dictd uses "250 ok - using MIME headers\r\n"
+                stream.write_all(
+                    format!(
+                        "{} ok - using MIME headers\r\n{}",
+                        StatusResponse::Ok.status_code(),
+                        MIME_HEADER
+                    )
+                    .as_bytes(),
+                )?;
+                unimplemented!();
             }
             Ok(Command::Auth { .. }) => {
-                unimplemented!()
-            }
-            Err(ParseError::InvalidCommand) => {
                 stream.write_all(
-                    StatusResponse::SyntaxErrorCommandNotRecognised
+                    StatusResponse::CommandNotImplemented
+                        .response_text()
+                        .as_bytes(),
+                )?;
+                todo!()
+            }
+            Err(status_response) => {
+                stream.write_all(
+                    status_response
                         .response_text()
                         .as_bytes(),
                 )?;
             }
-            Err(ParseError::InvalidArguments) => {
-                stream.write_all(
-                    StatusResponse::SyntaxErrorIllegalParameters
-                        .response_text()
-                        .as_bytes(),
-                )?;
-            }
-            _ => unimplemented!(),
         }
     }
     Ok(())
@@ -170,7 +176,7 @@ fn main() -> std::io::Result<()> {
 }
 
 #[derive(Debug)]
-enum StatusResponse {
+pub enum StatusResponse {
     // 1yz - Positive Preliminary reply
     /// * 110 n databases present - text follows
     DatabasesPresent {
@@ -191,9 +197,7 @@ enum StatusResponse {
     /// 130 challenge follows
     SASLChallengeFollows,
     /// * 150 n definitions retrieved - definitions follow
-    WordFound {
-        n_definitions: usize,
-    },
+    WordFound { n_definitions: usize },
     /// * 151 word database name - text follows      
     WordDefinition {
         word:       String,
@@ -201,7 +205,7 @@ enum StatusResponse {
         definition: String,
     },
     /// * 152 n matches found - text follows   
-    WordsMatched,
+    WordsMatched { n_matches: usize },
 
     // 2yz - Positive Completion reply
     /// 210 (optional timing and statistical information here)
@@ -250,8 +254,6 @@ enum StatusResponse {
     NoDatabasesPresent,
     /// 555 No strategies available
     NoStrategiesAvailable,
-
-    NoCommandParsed,
 }
 
 impl StatusResponse {
@@ -273,10 +275,16 @@ impl StatusResponse {
                 "{} {n_strategies} strategies present\r\n",
                 status.status_code()
             ),
-            status @ DatabaseInformation => todo!(),
+            status @ DatabaseInformation => {
+                format!("{} database information follows\r\n", status.status_code())
+            }
             status @ Help => format!("{} help text follows\r\n", status.status_code()),
-            status @ ServerInformation => todo!(),
-            status @ SASLChallengeFollows => todo!(),
+            status @ ServerInformation => {
+                format!("{} server information follows\r\n", status.status_code())
+            }
+            status @ SASLChallengeFollows => {
+                format!("{} challenge follows\r\n", status.status_code())
+            }
             status @ WordFound { n_definitions } => format!(
                 "{} {n_definitions} definitions retrieved \r\n",
                 status.status_code()
@@ -292,15 +300,26 @@ impl StatusResponse {
                 database.database_info,
                 definition
             ),
-            status @ WordsMatched => todo!(),
-            status @ Status => todo!(),
-            status @ ClientIPAllowed => format!("{} DUMMY_REQUEST_ID\r\n", status.status_code()),
+            status @ WordsMatched { n_matches } => format!(
+                "{} {n_matches} matches found - text follows\r\n",
+                status.status_code()
+            ),
+            status @ Status => format!("{} status <DUMMY_STATUS>\r\n", status.status_code()),
+            status @ ClientIPAllowed => format!("{} <DUMMY_REQUEST_ID>\r\n", status.status_code()),
             status @ Quit => format!("{} bye\r\n", status.status_code()),
-            status @ AuthenticationSuccessful => todo!(),
+            status @ AuthenticationSuccessful => {
+                format!("{} authentication successful\r\n", status.status_code())
+            }
             status @ Ok => format!("{} ok\r\n", status.status_code()),
-            status @ SASLSendResponse => todo!(),
-            status @ ServerTemporarilyUnavailable => todo!(),
-            status @ ServerShutdownOperatorRequest => todo!(),
+            status @ SASLSendResponse => format!("{} send response\r\n", status.status_code()),
+            status @ ServerTemporarilyUnavailable => format!(
+                "{} server temporarily unavailable\r\n",
+                status.status_code()
+            ),
+            status @ ServerShutdownOperatorRequest => format!(
+                "{} server shutting down at operator request\r\n",
+                status.status_code()
+            ),
             status @ SyntaxErrorCommandNotRecognised => {
                 format!("{} unknown command\r\n", status.status_code())
             }
@@ -310,21 +329,39 @@ impl StatusResponse {
                     status.status_code()
                 )
             }
-            status @ CommandNotImplemented => todo!(),
-            status @ CommandParameterNotImplemented => todo!(),
-            status @ AccessDeniedIPBlocked => todo!(),
-            status @ AccessDenied => todo!(),
-            status @ SASLUnknownMechanism => todo!(),
-            status @ InvalidDatabase => todo!(),
+            status @ CommandNotImplemented => {
+                format!("{} command not implemented\r\n", status.status_code())
+            }
+            status @ CommandParameterNotImplemented => {
+                format!(
+                    "{} command parameter not implemented\r\n",
+                    status.status_code()
+                )
+            }
+            status @ AccessDeniedIPBlocked => format!("{} access denied\r\n", status.status_code()),
+            status @ AccessDenied => format!(
+                "{} access denied, use \"SHOW INFO\" for server information\r\n",
+                status.status_code()
+            ),
+            status @ SASLUnknownMechanism => format!(
+                "{} access denied, unknown mechanism\r\n",
+                status.status_code()
+            ),
+            status @ InvalidDatabase => format!(
+                "{} invalid database, use \"SHOW DB\" for list of databases\r\n",
+                status.status_code()
+            ),
             status @ InvalidStrategy => format!(
-                "{} invalid strategy, use SHOW STRAT for a list\r\n",
+                "{} invalid strategy, use \"SHOW STRAT\" for a list of strategies\r\n",
                 status.status_code()
             ),
             status @ NoMatch => format!("{} no match\r\n", status.status_code()),
-            status @ NoDatabasesPresent => todo!(),
-            status @ NoStrategiesAvailable => todo!(),
-
-            status @ NoCommandParsed => unimplemented!(),
+            status @ NoDatabasesPresent => {
+                format!("{} no databases present\r\n", status.status_code())
+            }
+            status @ NoStrategiesAvailable => {
+                format!("{} no strategies available\r\n", status.status_code())
+            }
         }
     }
 
@@ -340,7 +377,7 @@ impl StatusResponse {
             SASLChallengeFollows            => 130,
             WordFound { .. }                => 150,
             WordDefinition { .. }           => 151,
-            WordsMatched                    => 152,
+            WordsMatched { .. }             => 152,
             Status                          => 210,
             ClientIPAllowed                 => 220,
             Quit                            => 221,
@@ -360,9 +397,7 @@ impl StatusResponse {
             InvalidStrategy                 => 551,
             NoMatch                         => 552,
             NoDatabasesPresent              => 554,
-            NoStrategiesAvailable           => 555,
-
-            NoCommandParsed => todo!(),
+            NoStrategiesAvailable           => 555
         }
     }
 }

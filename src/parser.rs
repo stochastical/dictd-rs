@@ -1,15 +1,6 @@
 use std::{env::Args, option};
 
-use crate::types::{DatabaseLookupStrategy, SearchStrategy};
-
-// PLAN: define custom Parse error types, and map those to the appropriate StatusResponse in the main loop.
-#[derive(Debug)]
-pub enum ParseError {
-    InvalidCommand,
-    InvalidArguments,
-    InvalidStrategy,
-    InvalidDatabase,
-}
+use crate::{StatusResponse, types::{DatabaseLookupStrategy, SearchStrategy}};
 
 #[derive(Debug)]
 pub enum ShowArgument {
@@ -86,7 +77,7 @@ pub enum Command {
 
 /// As an invariant, we assume that the command line has already been validated for UTF-8 encoding and max length.
 impl TryFrom<&str> for Command {
-    type Error = ParseError;
+    type Error = StatusResponse;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         // TODO: We need to support quoted atoms
@@ -94,7 +85,7 @@ impl TryFrom<&str> for Command {
         dbg!(&tokens);
 
         let Some(cmd) = tokens.first() else {
-            return Err(ParseError::InvalidCommand);
+            return Err(StatusResponse::SyntaxErrorCommandNotRecognised);
         };
 
         match (cmd.to_uppercase().as_str(), &tokens[1..]) {
@@ -107,7 +98,7 @@ impl TryFrom<&str> for Command {
                 },
                 word:     word.to_string(),
             }),
-            ("DEFINE", _) => Err(ParseError::InvalidArguments),
+            ("DEFINE", _) => Err(StatusResponse::SyntaxErrorIllegalParameters),
 
             // MATCH database strategy word
             ("MATCH", [database, strategy, word]) => Ok(Command::Match {
@@ -120,11 +111,11 @@ impl TryFrom<&str> for Command {
                     "." => SearchStrategy::Default,
                     "EXACT" => SearchStrategy::Exact,
                     "PREFIX" => SearchStrategy::Prefix,
-                    _ => return Err(ParseError::InvalidStrategy), // TODO: is this considered validation?
+                    _ => return Err(StatusResponse::InvalidStrategy), // TODO: is this considered validation?
                 },
                 word:     word.to_string(),
             }),
-            ("MATCH", _) => Err(ParseError::InvalidArguments),
+            ("MATCH", _) => Err(StatusResponse::SyntaxErrorIllegalParameters),
 
             // SHOW DB | DATABASES
             // SHOW STRAT | STRATEGIES
@@ -139,10 +130,10 @@ impl TryFrom<&str> for Command {
                     [db_name] => Ok(Command::Show(ShowArgument::Info {
                         database: DatabaseLookupStrategy::Named(db_name.to_string()),
                     })),
-                    _ => Err(ParseError::InvalidArguments),
+                    _ => Err(StatusResponse::SyntaxErrorIllegalParameters),
                 },
 
-                _ => Err(ParseError::InvalidArguments),
+                _ => Err(StatusResponse::SyntaxErrorIllegalParameters),
             },
 
             //  CLIENT text
@@ -154,23 +145,23 @@ impl TryFrom<&str> for Command {
             ("STATUS", []) => Ok(Command::Status),
 
             // HELP
-            ("HELP", []) => Ok(Command::Help),
+            ("HELP", _) => Ok(Command::Help),
 
             // QUIT
-            ("QUIT", []) => Ok(Command::Quit),
+            ("QUIT", _) => Ok(Command::Quit),
 
             // OPTION MIME
             ("OPTION", [opt]) if opt.eq_ignore_ascii_case("MIME") => Ok(Command::OptionMIME),
-            ("OPTION", _) => Err(ParseError::InvalidArguments),
+            ("OPTION", _) => Err(StatusResponse::SyntaxErrorIllegalParameters),
 
             // AUTH username authentication-string
             ("AUTH", [username, authentication_string]) => Ok(Command::Auth {
                 username:              username.to_string(),
                 authentication_string: authentication_string.to_string(),
             }),
-            ("AUTH", _) => Err(ParseError::InvalidArguments),
+            ("AUTH", _) => Err(StatusResponse::SyntaxErrorIllegalParameters),
 
-            _ => Err(ParseError::InvalidCommand),
+            _ => Err(StatusResponse::SyntaxErrorCommandNotRecognised),
         }
     }
 }
