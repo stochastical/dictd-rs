@@ -1,10 +1,11 @@
+use std::fmt;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 
 mod parser;
 mod types;
 
-use parser::{Command};
+use parser::Command;
 use types::{Database, DatabaseLookupStrategy, Definition, SearchStrategy};
 
 const DICT_SERVER_PORT: u16 = 2628;
@@ -36,7 +37,7 @@ const HELP_LINES: &[&str] = &[
 /// TODO: it'd be nice to return a StatusResponse maybe?
 fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
     eprintln!("New client connection: {:#?}", &stream);
-    stream.write_all(StatusResponse::ClientIPAllowed.response_text().as_bytes())?;
+    write!(stream, "{}\r\n", StatusResponse::ClientIPAllowed)?;
 
     loop {
         let mut buffer = [0; LINE_BUFFER_MAX_BYTES];
@@ -49,61 +50,57 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
         }
         let Ok(command_line) = str::from_utf8(&buffer[..bytes_read]) else {
             eprintln!("Client sent invalid UTF-8.");
-            stream.write_all(
+            write!(
+                stream,
+                "{}",
                 StatusResponse::SyntaxErrorCommandNotRecognised
-                    .response_text()
-                    .as_bytes(),
             )?;
             continue;
         };
         if command_line.chars().count() > LINE_BUFFER_MAX_CHARS {
-            stream.write_all(
-                StatusResponse::SyntaxErrorIllegalParameters
-                    .response_text()
-                    .as_bytes(),
-            )?;
+            write!(stream, "{}", StatusResponse::SyntaxErrorIllegalParameters)?;
             continue;
         }
 
         match dbg!(Command::try_from(command_line)) {
             Ok(Command::Quit) => {
-                stream.write_all(StatusResponse::Quit.response_text().as_bytes())?;
+                write!(stream, "{}", StatusResponse::Quit)?;
                 return Ok(());
             }
             Ok(Command::Help) => {
-                stream.write_all(StatusResponse::Help.response_text().as_bytes())?;
+                write!(stream, "{}", StatusResponse::Help)?;
                 stream.write_all(HELP_LINES.join("\r\n").as_bytes())?;
                 stream.write_all("\r\n.\r\n".as_bytes())?;
-                stream.write_all(StatusResponse::Ok.response_text().as_bytes())?;
+                write!(stream, "{}", StatusResponse::Ok)?;
             }
             Ok(Command::Client { .. }) => {
-                stream.write_all(StatusResponse::Ok.response_text().as_bytes())?;
+                write!(stream, "{}", StatusResponse::Ok)?;
             }
             Ok(Command::Define { database, word }) => {
                 let definitions = define_word(word, database);
                 if definitions.is_empty() {
-                    stream.write_all(StatusResponse::NoMatch.response_text().as_bytes())?;
+                    write!(stream, "{}", StatusResponse::NoMatch)?;
                 } else {
-                    stream.write_all(
+                    write!(
+                        stream,
+                        "{}",
                         StatusResponse::WordFound {
                             n_definitions: definitions.len(),
                         }
-                        .response_text()
-                        .as_bytes(),
                     )?;
                     for definition in definitions {
-                        stream.write_all(
+                        write!(
+                            stream,
+                            "{}",
                             StatusResponse::WordDefinition {
                                 word:       definition.head_word,
                                 database:   definition.database,
                                 definition: definition.definition,
                             }
-                            .response_text()
-                            .as_bytes(),
                         )?;
-                        stream.write_all(".\r\n".as_bytes())?;
+                        write!(stream, ".\r\n")?;
                     }
-                    stream.write_all(StatusResponse::Ok.response_text().as_bytes())?;
+                    write!(stream, "{}", StatusResponse::Ok)?;
                 }
             }
             Ok(Command::Match {
@@ -118,33 +115,23 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
             }
 
             Ok(Command::Status) => {
-                stream.write_all(StatusResponse::Status.response_text().as_bytes())?;
+                write!(stream, "{}", StatusResponse::Status)?;
             }
             Ok(Command::OptionMIME) => {
                 // WARNING: dictd uses "250 ok - using MIME headers\r\n"
-                stream.write_all(
-                    format!(
-                        "{} ok - using MIME headers\r\n",
-                        StatusResponse::Ok.status_code()
-                    )
-                    .as_bytes(),
+                write!(
+                    stream,
+                    "{} ok - using MIME headers\r\n",
+                    StatusResponse::Ok.code()
                 )?;
                 unimplemented!();
             }
             Ok(Command::Auth { .. }) => {
-                stream.write_all(
-                    StatusResponse::CommandNotImplemented
-                        .response_text()
-                        .as_bytes(),
-                )?;
+                write!(stream, "{}", StatusResponse::CommandNotImplemented)?;
                 todo!()
             }
             Err(status_response) => {
-                stream.write_all(
-                    status_response
-                        .response_text()
-                        .as_bytes(),
-                )?;
+                write!(stream, "{}", status_response)?;
             }
         }
     }
@@ -185,10 +172,7 @@ pub enum StatusResponse {
         text:        String,
     },
     /// * 111 n strategies available - text follows
-    StrategiesAvailable {
-        n_strategies: usize,
-        strategies:   Vec<SearchStrategy>,
-    },
+    StrategiesAvailable { n_strategies: usize },
     /// 112 database information follows
     DatabaseInformation,
     /// 113 help text follows
@@ -258,116 +242,8 @@ pub enum StatusResponse {
 }
 
 impl StatusResponse {
-    /// REFACTOR: I think this should set out the template, which includes the
-    /// unless, is there a way to return a template, and let it be filled in later?
-    /// should the e.g. HELP text be stored in the enum variant itself? Or is it better to have a separate function that generates the text based on the variant and its params? Should the databases and strategies be stored in the enum variant itself, or should they be passed in as params to the function that generates the text?
-    /// Format: status code <optional params> explanatory text
-    fn response_text(&self) -> String {
-        use StatusResponse::*;
-        match self {
-            status @ DatabasesPresent { n_databases, text } => format!(
-                "{} {n_databases} databases present - text follows\r\n",
-                status.status_code()
-            ),
-            status @ StrategiesAvailable {
-                n_strategies,
-                strategies,
-            } => format!(
-                "{} {n_strategies} strategies present\r\n",
-                status.status_code()
-            ),
-            status @ DatabaseInformation => {
-                format!("{} database information follows\r\n", status.status_code())
-            }
-            status @ Help => format!("{} help text follows\r\n", status.status_code()),
-            status @ ServerInformation => {
-                format!("{} server information follows\r\n", status.status_code())
-            }
-            status @ SASLChallengeFollows => {
-                format!("{} challenge follows\r\n", status.status_code())
-            }
-            status @ WordFound { n_definitions } => format!(
-                "{} {n_definitions} definitions retrieved \r\n",
-                status.status_code()
-            ),
-            status @ WordDefinition {
-                word,
-                database,
-                definition,
-            } => format!(
-                "{} \"{word}\" {} \"{}\"\r\n{}\r\n",
-                status.status_code(),
-                database.name,
-                database.database_info,
-                definition
-            ),
-            status @ WordsMatched { n_matches } => format!(
-                "{} {n_matches} matches found - text follows\r\n",
-                status.status_code()
-            ),
-            status @ Status => format!("{} status <DUMMY_STATUS>\r\n", status.status_code()),
-            status @ ClientIPAllowed => format!("{} <DUMMY_REQUEST_ID>\r\n", status.status_code()),
-            status @ Quit => format!("{} bye\r\n", status.status_code()),
-            status @ AuthenticationSuccessful => {
-                format!("{} authentication successful\r\n", status.status_code())
-            }
-            status @ Ok => format!("{} ok\r\n", status.status_code()),
-            status @ SASLSendResponse => format!("{} send response\r\n", status.status_code()),
-            status @ ServerTemporarilyUnavailable => format!(
-                "{} server temporarily unavailable\r\n",
-                status.status_code()
-            ),
-            status @ ServerShutdownOperatorRequest => format!(
-                "{} server shutting down at operator request\r\n",
-                status.status_code()
-            ),
-            status @ SyntaxErrorCommandNotRecognised => {
-                format!("{} unknown command\r\n", status.status_code())
-            }
-            status @ SyntaxErrorIllegalParameters => {
-                format!(
-                    "{} syntax error, illegal parameters\r\n",
-                    status.status_code()
-                )
-            }
-            status @ CommandNotImplemented => {
-                format!("{} command not implemented\r\n", status.status_code())
-            }
-            status @ CommandParameterNotImplemented => {
-                format!(
-                    "{} command parameter not implemented\r\n",
-                    status.status_code()
-                )
-            }
-            status @ AccessDeniedIPBlocked => format!("{} access denied\r\n", status.status_code()),
-            status @ AccessDenied => format!(
-                "{} access denied, use \"SHOW INFO\" for server information\r\n",
-                status.status_code()
-            ),
-            status @ SASLUnknownMechanism => format!(
-                "{} access denied, unknown mechanism\r\n",
-                status.status_code()
-            ),
-            status @ InvalidDatabase => format!(
-                "{} invalid database, use \"SHOW DB\" for list of databases\r\n",
-                status.status_code()
-            ),
-            status @ InvalidStrategy => format!(
-                "{} invalid strategy, use \"SHOW STRAT\" for a list of strategies\r\n",
-                status.status_code()
-            ),
-            status @ NoMatch => format!("{} no match\r\n", status.status_code()),
-            status @ NoDatabasesPresent => {
-                format!("{} no databases present\r\n", status.status_code())
-            }
-            status @ NoStrategiesAvailable => {
-                format!("{} no strategies available\r\n", status.status_code())
-            }
-        }
-    }
-
     #[rustfmt::skip]
-    const fn status_code(&self) -> u16 {
+    const fn code(&self) -> u16 {
         use StatusResponse::*;
         match self {
             DatabasesPresent { .. }         => 110,
@@ -399,6 +275,99 @@ impl StatusResponse {
             NoMatch                         => 552,
             NoDatabasesPresent              => 554,
             NoStrategiesAvailable           => 555
+        }
+    }
+}
+
+/// Format: status code <optional params> explanatory text
+impl fmt::Display for StatusResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use StatusResponse::*;
+        let code = self.code();
+        match self {
+            DatabasesPresent { n_databases, text } => write!(
+                f,
+                "{} {n_databases} databases present - text follows\r\n",
+                code
+            ),
+            StrategiesAvailable { n_strategies } => {
+                write!(f, "{} {n_strategies} strategies present\r\n", code)
+            }
+            DatabaseInformation => {
+                write!(f, "{} database information follows\r\n", code)
+            }
+            Help => write!(f, "{} help text follows\r\n", code),
+            ServerInformation => {
+                write!(f, "{} server information follows\r\n", code)
+            }
+            SASLChallengeFollows => {
+                write!(f, "{} challenge follows\r\n", code)
+            }
+            WordFound { n_definitions } => {
+                write!(f, "{} {n_definitions} definitions retrieved \r\n", code)
+            }
+            WordDefinition {
+                word,
+                database,
+                definition,
+            } => write!(
+                f,
+                "{} \"{word}\" {} \"{}\"\r\n{}\r\n",
+                code, database.name, database.database_info, definition
+            ),
+            WordsMatched { n_matches } => {
+                write!(f, "{} {n_matches} matches found - text follows\r\n", code)
+            }
+            Status => write!(f, "{} status <DUMMY_STATUS>\r\n", code),
+            ClientIPAllowed => write!(f, "{} <DUMMY_REQUEST_ID>\r\n", code),
+            Quit => write!(f, "{} bye\r\n", code),
+            AuthenticationSuccessful => {
+                write!(f, "{} authentication successful\r\n", code)
+            }
+            Ok => write!(f, "{} ok\r\n", code),
+            SASLSendResponse => write!(f, "{} send response\r\n", code),
+            ServerTemporarilyUnavailable => {
+                write!(f, "{} server temporarily unavailable\r\n", code)
+            }
+            ServerShutdownOperatorRequest => {
+                write!(f, "{} server shutting down at operator request\r\n", code)
+            }
+            SyntaxErrorCommandNotRecognised => {
+                write!(f, "{} unknown command\r\n", code)
+            }
+            SyntaxErrorIllegalParameters => {
+                write!(f, "{} syntax error, illegal parameters\r\n", code)
+            }
+            CommandNotImplemented => {
+                write!(f, "{} command not implemented\r\n", code)
+            }
+            CommandParameterNotImplemented => {
+                write!(f, "{} command parameter not implemented\r\n", code)
+            }
+            AccessDeniedIPBlocked => write!(f, "{} access denied\r\n", code),
+            AccessDenied => write!(
+                f,
+                "{} access denied, use \"SHOW INFO\" for server information\r\n",
+                code
+            ),
+            SASLUnknownMechanism => write!(f, "{} access denied, unknown mechanism\r\n", code),
+            InvalidDatabase => write!(
+                f,
+                "{} invalid database, use \"SHOW DB\" for list of databases\r\n",
+                code
+            ),
+            InvalidStrategy => write!(
+                f,
+                "{} invalid strategy, use \"SHOW STRAT\" for a list of strategies\r\n",
+                code
+            ),
+            NoMatch => write!(f, "{} no match\r\n", code),
+            NoDatabasesPresent => {
+                write!(f, "{} no databases present\r\n", code)
+            }
+            NoStrategiesAvailable => {
+                write!(f, "{} no strategies available\r\n", code)
+            }
         }
     }
 }
