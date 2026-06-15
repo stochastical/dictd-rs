@@ -1,6 +1,12 @@
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 
+mod parser;
+mod types;
+
+use parser::{Command, ParseError};
+use types::{Database, DatabaseLookupStrategy, Definition, SearchStrategy};
+
 const DICT_SERVER_PORT: u16 = 2628;
 const LINE_BUFFER_MAX_CHARS: usize = 1024;
 const LINE_BUFFER_MAX_BYTES: usize = 6144; // 1024 * 6
@@ -57,7 +63,7 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
             continue;
         }
 
-        match Command::try_from(command_line) {
+        match dbg!(Command::try_from(command_line)) {
             Ok(Command::Quit) => {
                 stream.write_all(StatusResponse::Quit.response_text().as_bytes())?;
                 return Ok(());
@@ -65,6 +71,7 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
             Ok(Command::Help) => {
                 stream.write_all(StatusResponse::Help.response_text().as_bytes())?;
                 stream.write_all(HELP_LINES.join("\r\n").as_bytes())?;
+                stream.write_all("\r\n.\r\n".as_bytes())?;
                 stream.write_all(StatusResponse::Ok.response_text().as_bytes())?;
             }
             Ok(Command::Client { .. }) => {
@@ -114,20 +121,24 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
             Ok(Command::OptionMIME) => {
                 unimplemented!()
             }
-            Ok(Command::Auth { .. }) | Ok(Command::SASLAuth { .. }) => {
+            Ok(Command::Auth { .. }) => {
                 unimplemented!()
             }
             Err(ParseError::InvalidCommand) => {
-                stream.write_all(StatusResponse::SyntaxErrorCommandNotRecognised.response_text().as_bytes())?;
+                stream.write_all(
+                    StatusResponse::SyntaxErrorCommandNotRecognised
+                        .response_text()
+                        .as_bytes(),
+                )?;
             }
             Err(ParseError::InvalidArguments) => {
-                stream.write_all(StatusResponse::SyntaxErrorIllegalParameters.response_text().as_bytes())?;
+                stream.write_all(
+                    StatusResponse::SyntaxErrorIllegalParameters
+                        .response_text()
+                        .as_bytes(),
+                )?;
             }
-
-            // Err(status @ StatusResponse::SyntaxErrorIllegalParameters) => {
-            //     stream.write(status.response_text().as_bytes())?;
-            // },
-            _ => unimplemented!(),
+            _ => unimplemented!()
         }
     }
     Ok(())
@@ -303,7 +314,7 @@ impl StatusResponse {
                 database,
                 definition,
             } => format!(
-                "{} {word} {} {}\r\n{}\r\n",
+                "{} \"{word}\" {} \"{}\"\r\n{}\r\n",
                 status.status_code(),
                 database.name,
                 database.database_info,
@@ -393,7 +404,7 @@ fn define_word(word: String, database_lookup_strategy: DatabaseLookupStrategy) -
             eprintln!("Looking up word '{}' in database '{}'", word, db);
             vec![Definition {
                 database:   Database {
-                    name: db.clone(),
+                    name:          db.clone(),
                     database_info: format!("This is the {} database", db),
                 },
                 head_word:  word.clone(),
@@ -424,158 +435,6 @@ fn define_word(word: String, database_lookup_strategy: DatabaseLookupStrategy) -
             ]
         }
     }
-}
-
-#[derive(Debug)]
-enum Command {
-    /// DEFINE database word
-    Define {
-        database: DatabaseLookupStrategy,
-        word:     String,
-    },
-
-    /// MATCH database strategy word
-    Match {
-        database: DatabaseLookupStrategy,
-        strategy: SearchStrategy,
-        word:     String,
-    },
-
-    /// SHOW DB or SHOW DATABASES
-    /// SHOW STRAT or SHOW STRATEGIES
-    /// SHOW INFO database
-    /// SHOW SERVER
-    Show(ShowArgument),
-
-    ///  CLIENT text
-    Client { text: String },
-
-    /// STATUS
-    Status,
-
-    /// HELP
-    Help,
-
-    /// QUIT
-    Quit,
-
-    /// OPTION MIME
-    OptionMIME,
-
-    /// AUTH username authentication-string
-    Auth {
-        username:              String,
-        authentication_string: String,
-    },
-
-    /// SASLAUTH mechanism initial-response
-    /// SASLRESP response
-    SASLAuth {
-        mechanism:        String,
-        initial_response: Option<String>,
-    },
-}
-
-// Plan: define custom Parse error types,
-// and map those to the appropriate StatusResponse in the main loop.
-#[derive(Debug)]
-enum ParseError {
-    InvalidCommand,
-    InvalidArguments,
-}
-
-impl TryFrom<&str> for Command {
-    type Error = ParseError;
-
-    // QUESTION: Should the parser validate the command line length and UTF-8 encoding before trying to parse the command?
-    // TODO: Commands and arguments can be quoted! The tokeniser needs to handle quoted strings
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let tokens: Vec<&str> = dbg!(value.split_ascii_whitespace().collect());
-
-        match dbg!(tokens[0].to_uppercase().as_str()) {
-            "DEFINE" => {
-                match tokens[1..] {
-                    [database_token, word_token] => {
-                        Ok(Command::Define {
-                            database: match database_token {
-                                "!" => DatabaseLookupStrategy::First,
-                                "*" => DatabaseLookupStrategy::All,
-                                // TODO: need to validate that the database name is valid (and exists?)
-                                db_name => unimplemented!(),
-                            },
-                            word:     word_token.to_string(),
-                        })
-                    }
-                    _ => Err(ParseError::InvalidArguments),
-                }
-            }
-            "MATCH" => unimplemented!(),
-            "SHOW" => {
-                match tokens[1].to_uppercase().as_str() {
-                    "DB" | "DATABASES" => Ok(Command::Show(ShowArgument::Databases)),
-                    "STRAT" | "STRATEGIES" => Ok(Command::Show(ShowArgument::Strategies)),
-                    "SERVER" => Ok(Command::Show(ShowArgument::Server)),
-                    "INFO" => {
-                        // TODO: I need to validate there's exactly one more token, and that it's a valid database name (and exists?)
-                        // Should I be resolving and validating the database name in the parser, or should I just pass it through and let the handler deal with it?
-                        // or do I have an impl Database::new that does the validation?
-                        unimplemented!()
-                    }
-                    _ => Err(ParseError::InvalidArguments),
-                }
-            }
-            "CLIENT" => Ok(Command::Client {
-                text: dbg!(tokens[1..].join(" ")),
-            }),
-            "STATUS" => Ok(Command::Status),
-            "HELP" => Ok(Command::Help),
-            "QUIT" => Ok(Command::Quit),
-            "OPTION" => match dbg!(tokens[1].to_uppercase().as_str()) {
-                "MIME" => Ok(Command::OptionMIME),
-                _ => Err(ParseError::InvalidArguments),
-            },
-            "AUTH" => unimplemented!(),
-            "SASLAUTH" | "SASLRESP" | _ => Err(ParseError::InvalidCommand),
-        }
-    }
-}
-
-#[derive(Debug)]
-enum ShowArgument {
-    Info { database: Database },
-    Databases,
-    Strategies,
-    Server,
-}
-
-#[derive(Debug)]
-struct Database {
-    name:          String,
-    database_info: String,
-}
-
-#[derive(Debug)]
-enum DatabaseLookupStrategy {
-    Named(String), // specific database
-    First,           // '!'
-    All,             // '*
-}
-
-/// Unsupported variants include:
-/// Substring, Suffix, Regex,
-/// Soundex, Levenshtein
-#[derive(Debug)]
-enum SearchStrategy {
-    Exact,
-    Prefix,
-    Default, // '.'
-}
-
-#[derive(Debug)]
-struct Definition {
-    database:   Database,
-    head_word:  String,
-    definition: String,
 }
 
 #[cfg(test)]
