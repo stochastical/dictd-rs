@@ -1,6 +1,7 @@
-use std::{env::Args, option};
-
-use crate::{StatusResponse, types::{DatabaseLookupStrategy, SearchStrategy}};
+use crate::{
+    StatusResponse,
+    types::{DatabaseLookupStrategy, SearchStrategy},
+};
 
 #[derive(Debug)]
 pub enum ShowArgument {
@@ -135,6 +136,7 @@ impl TryFrom<&str> for Command {
 
                 _ => Err(StatusResponse::SyntaxErrorIllegalParameters),
             },
+            ("SHOW", _) => Err(StatusResponse::SyntaxErrorIllegalParameters),
 
             //  CLIENT text
             ("CLIENT", [info @ ..]) => Ok(Command::Client {
