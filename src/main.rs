@@ -10,8 +10,10 @@ use types::{Database, DatabaseLookupStrategy, Definition, SearchStrategy};
 const DICT_SERVER_PORT: u16 = 2628;
 const LINE_BUFFER_MAX_CHARS: usize = 1024;
 const LINE_BUFFER_MAX_BYTES: usize = 6144; // 1024 * 6
-const MIME_HEADER: &'static str =
-    "Content-type: text/plain; charset=utf-8\r\nContent-transfer-encoding: 8bit";
+const MIME_HEADER: &[&str] = &[
+    "Content-type: text/plain; charset=utf-8",
+    "Content-transfer-encoding: 8bit",
+];
 
 const HELP_LINES: &[&str] = &[
     "DEFINE database word         -- look up word in database",
@@ -122,9 +124,8 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
                 // WARNING: dictd uses "250 ok - using MIME headers\r\n"
                 stream.write_all(
                     format!(
-                        "{} ok - using MIME headers\r\n{}",
-                        StatusResponse::Ok.status_code(),
-                        MIME_HEADER
+                        "{} ok - using MIME headers\r\n",
+                        StatusResponse::Ok.status_code()
                     )
                     .as_bytes(),
                 )?;
