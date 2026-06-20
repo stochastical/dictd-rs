@@ -3,6 +3,10 @@ use std::env;
 use std::fs;
 use thiserror::Error;
 
+const NUM_FIELDS: usize = 3;
+const FIELD_DELIMITER: char = '\t';
+const HEADER_PREFIX: &str = "00";
+
 #[derive(Error, Debug)]
 enum ParseError {
     #[error("unknown header")]
@@ -32,6 +36,9 @@ enum DatabaseHeader {
     URL(IndexEntry),
     Alphabet(IndexEntry),
     UTF8(IndexEntry),
+    DefaultStrategy(IndexEntry),
+    AllChars(IndexEntry),
+    CaseSensitive(IndexEntry),
 }
 
 type Headword = String;
@@ -65,20 +72,10 @@ fn decode_base64_int(s: &str) -> Result<u64, ParseError> {
     Ok(result)
 }
 
-const HEADER_PREFIX: &str = "00database";
-const FIELD_DELIMITER: char = '\t';
-const NUM_FIELDS: usize = 3;
-// fn parse_header(s: &str, index: IndexEntry) -> Result<DatabaseHeader, ParseError> {
-//     match s.strip_prefix(HEADER_PREFIX) {
-//         Some("alphabet") => Ok(DatabaseHeader::Alphabet(index)),
-//         Some("info") => Ok(DatabaseHeader::Info(index)),
-//         Some("short") => Ok(DatabaseHeader::ShortName(index)),
-//         Some("url") => Ok(DatabaseHeader::URL(index)),
-//         Some("utf8") => Ok(DatabaseHeader::UTF8(index)),
-//         Some(_) => Err(ParseError::UnknownHeader(s.into())),
-//         None => unreachable!(),
-//     }
-// }
+fn normalise_header_key(key: &str) -> Option<&str> {
+    key.strip_prefix("00database")
+        .or_else(|| key.strip_prefix("00-database-"))
+}
 
 fn main() -> Result<(), ParseError> {
     let index_path = env::args().nth(1).expect("Please pass in a .index file");
@@ -110,8 +107,8 @@ fn main() -> Result<(), ParseError> {
             length: length as usize,
         };
 
-        if line.starts_with(HEADER_PREFIX) {
-            let header_type = key.strip_prefix(HEADER_PREFIX).unwrap();
+        if key.starts_with(HEADER_PREFIX) {
+            let header_type = normalise_header_key(key).unwrap();
 
             index.headers.push(match header_type {
                 "alphabet" => DatabaseHeader::Alphabet(index_entry),
@@ -119,6 +116,9 @@ fn main() -> Result<(), ParseError> {
                 "short" => DatabaseHeader::ShortName(index_entry),
                 "url" => DatabaseHeader::URL(index_entry),
                 "utf8" => DatabaseHeader::UTF8(index_entry),
+                "defaultstrategy" => DatabaseHeader::DefaultStrategy(index_entry),
+                "allchars" => DatabaseHeader::AllChars(index_entry),
+                "casesensitive" => DatabaseHeader::CaseSensitive(index_entry),
                 _ => return Err(ParseError::UnknownHeader(header_type.into())),
             });
         } else {
