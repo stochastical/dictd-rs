@@ -97,6 +97,8 @@ fn parse_index(content: &str) -> Result<Index, ParseError> {
 
         let offset = decode_base64_int(offset)?;
         let length = decode_base64_int(length)?;
+        assert!(offset >= 0);
+        assert_ne!(length, 0);
 
         let index_entry = IndexEntry {
             offset: offset as usize,
