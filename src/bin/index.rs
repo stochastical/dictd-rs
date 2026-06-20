@@ -1,14 +1,19 @@
 /// Implements a dictionary reader for the (uncompressed) .dict + .index format
-use std::env;
+use std::{
+    env,
+    fs::File,
+    io::{BufRead, BufReader},
+};
+
 use thiserror::Error;
 
 const NUM_FIELDS: usize = 3;
 const FIELD_DELIMITER: char = '\t';
-const HEADER_PREFIX: &str = "00";
+const HEADER_PREFIX: &str = "00-database-";
 
 #[derive(Error, Debug)]
 enum ParseError {
-    #[error("unknown header")]
+    #[error("unknown header {0}")]
     UnknownHeader(String),
     #[error("missing field")]
     MissingField,
@@ -68,12 +73,7 @@ fn decode_base64_int(s: &str) -> Result<u64, ParseError> {
     Ok(result)
 }
 
-fn normalise_header_key(key: &str) -> Option<&str> {
-    key.strip_prefix("00database")
-        .or_else(|| key.strip_prefix("00-database-"))
-}
-
-fn parse_index(content: &str) -> Result<Index, ParseError> {
+fn parse_index(reader: BufReader<File>) -> Result<Index, ParseError> {
     // I wish we could use reflection to do Vec::with_capacity(DatabaseHeader.num_variants)
     // Should be able to get the approx entries length from the index_raw, though
     let mut index = Index {
@@ -81,7 +81,7 @@ fn parse_index(content: &str) -> Result<Index, ParseError> {
         entries: Vec::new(),
     };
 
-    for line in content.lines().filter(|l| !l.is_empty()) {
+    for line in reader.lines().map(|l| l.unwrap()).filter(|l| !l.is_empty()) {
         let mut parts = line.splitn(NUM_FIELDS, FIELD_DELIMITER);
 
         let (Some(key), Some(offset), Some(length)) = (parts.next(), parts.next(), parts.next())
@@ -97,7 +97,6 @@ fn parse_index(content: &str) -> Result<Index, ParseError> {
 
         let offset = decode_base64_int(offset)?;
         let length = decode_base64_int(length)?;
-        assert!(offset >= 0);
         assert_ne!(length, 0);
 
         let index_entry = IndexEntry {
@@ -107,7 +106,7 @@ fn parse_index(content: &str) -> Result<Index, ParseError> {
 
         if key.starts_with(HEADER_PREFIX) {
             let header_type =
-                normalise_header_key(key).ok_or_else(|| ParseError::UnknownHeader(key.into()))?;
+                key.strip_prefix(HEADER_PREFIX).unwrap();
 
             index.headers.push(match header_type {
                 "alphabet" => DatabaseHeader::Alphabet(index_entry),
@@ -118,7 +117,7 @@ fn parse_index(content: &str) -> Result<Index, ParseError> {
                 "defaultstrategy" => DatabaseHeader::DefaultStrategy(index_entry),
                 "allchars" => DatabaseHeader::AllChars(index_entry),
                 "casesensitive" => DatabaseHeader::CaseSensitive(index_entry),
-                _ => return Err(ParseError::UnknownHeader(header_type.into())),
+                _ => continue // TODO: return Err(ParseError::UnknownHeader(header_type.into())),
             });
         } else {
             index.entries.push((key.into(), index_entry));
@@ -128,10 +127,11 @@ fn parse_index(content: &str) -> Result<Index, ParseError> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let index_path = env::args().nth(1).expect("Please pass in a .index file");
-    let content = std::fs::read_to_string(index_path)?;
-    let index = parse_index(&content)?;
-    println!("{:#?}", index);
+    let path = env::args().nth(1).expect("Please pass in a .index file");
+    let file = File::open(&path)?;
+    let reader = BufReader::new(file);
+    let index = parse_index(reader)?;
+    dbg!(index);
 
     Ok(())
 }
