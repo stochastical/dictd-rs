@@ -14,7 +14,7 @@ const HEADER_PREFIX: &str = "00-database-";
 #[derive(Error, Debug)]
 enum ParseError {
     #[error("unknown header {0}")]
-    UnknownHeader(String),
+    UnknownHeader(String),  // TODO: I'm catching these headers as Uknown instead. Parse don't validate?
     #[error("missing field")]
     MissingField,
     #[error("invalid base64 char {0}")]
@@ -40,6 +40,8 @@ enum DatabaseHeader {
     DefaultStrategy(IndexEntry),
     AllChars(IndexEntry),
     CaseSensitive(IndexEntry),
+
+    Unknown(String, IndexEntry)
 }
 
 type Headword = String;
@@ -117,7 +119,7 @@ fn parse_index(reader: BufReader<File>) -> Result<Index, ParseError> {
                 "defaultstrategy" => DatabaseHeader::DefaultStrategy(index_entry),
                 "allchars" => DatabaseHeader::AllChars(index_entry),
                 "casesensitive" => DatabaseHeader::CaseSensitive(index_entry),
-                _ => continue // TODO: return Err(ParseError::UnknownHeader(header_type.into())),
+                _ => DatabaseHeader::Unknown(key.into(), index_entry)
             });
         } else {
             index.entries.push((key.into(), index_entry));
@@ -131,6 +133,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open(&path)?;
     let reader = BufReader::new(file);
     let index = parse_index(reader)?;
+
+    cfg!()
     dbg!(index);
 
     Ok(())
