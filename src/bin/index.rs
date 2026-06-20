@@ -1,6 +1,5 @@
 /// Implements a dictionary reader for the (uncompressed) .dict + .index format
 use std::env;
-use std::fs;
 use thiserror::Error;
 
 const NUM_FIELDS: usize = 3;
@@ -17,9 +16,6 @@ enum ParseError {
     InvalidBase64Char(char),
     #[error("extra field present")]
     ExtraField,
-
-    #[error("IO error")]
-    Io(#[from] std::io::Error),
 }
 
 #[derive(Debug)]
@@ -77,10 +73,7 @@ fn normalise_header_key(key: &str) -> Option<&str> {
         .or_else(|| key.strip_prefix("00-database-"))
 }
 
-fn main() -> Result<(), ParseError> {
-    let index_path = env::args().nth(1).expect("Please pass in a .index file");
-    let index_raw = fs::read_to_string(index_path)?;
-
+fn parse_index(content: &str) -> Result<Index, ParseError> {
     // I wish we could use reflection to do Vec::with_capacity(DatabaseHeader.num_variants)
     // Should be able to get the approx entries length from the index_raw, though
     let mut index = Index {
@@ -88,7 +81,7 @@ fn main() -> Result<(), ParseError> {
         entries: Vec::new(),
     };
 
-    for line in index_raw.lines().filter(|l| !l.is_empty()) {
+    for line in content.lines().filter(|l| !l.is_empty()) {
         let mut parts = line.splitn(NUM_FIELDS, FIELD_DELIMITER);
 
         let (Some(key), Some(offset), Some(length)) = (parts.next(), parts.next(), parts.next())
@@ -108,7 +101,8 @@ fn main() -> Result<(), ParseError> {
         };
 
         if key.starts_with(HEADER_PREFIX) {
-            let header_type = normalise_header_key(key).unwrap();
+            let header_type =
+                normalise_header_key(key).ok_or_else(|| ParseError::UnknownHeader(key.into()))?;
 
             index.headers.push(match header_type {
                 "alphabet" => DatabaseHeader::Alphabet(index_entry),
@@ -125,5 +119,14 @@ fn main() -> Result<(), ParseError> {
             index.entries.push((key.into(), index_entry));
         }
     }
+    Ok(index)
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let index_path = env::args().nth(1).expect("Please pass in a .index file");
+    let content = std::fs::read_to_string(index_path)?;
+    let index = parse_index(&content)?;
+    println!("{:#?}", index);
+
     Ok(())
 }
