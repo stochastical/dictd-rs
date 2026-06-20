@@ -88,6 +88,9 @@ fn parse_index(content: &str) -> Result<Index, ParseError> {
         else {
             return Err(ParseError::MissingField);
         };
+        if key.is_empty() || offset.is_empty() || length.is_empty() {
+            return Err(ParseError::MissingField);
+        }
         if parts.next().is_some() {
             return Err(ParseError::ExtraField);
         }
