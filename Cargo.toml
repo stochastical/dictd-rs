@@ -5,11 +5,3 @@ edition = "2024"
 
 [dependencies]
 thiserror = "2.0.18"
-
-[[bin]]
-name = "dict"
-path = "src/dict.rs"
-
-[[bin]]
-name = "index"
-path = "src/index.rs"

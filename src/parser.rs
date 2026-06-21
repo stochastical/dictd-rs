@@ -1,11 +1,8 @@
-use crate::{
-    StatusResponse,
-    types::{DatabaseLookupStrategy, SearchStrategy},
-};
+use crate::types::{Database, DatabaseLookupStrategy, SearchStrategy, StatusResponse};
 
 #[derive(Debug)]
 pub enum ShowArgument {
-    Info { database: DatabaseLookupStrategy },
+    Info { database: String },
     Databases,
     Strategies,
     Server,
@@ -129,7 +126,7 @@ impl TryFrom<&str> for Command {
 
                 "INFO" => match rest {
                     [db_name] => Ok(Command::Show(ShowArgument::Info {
-                        database: DatabaseLookupStrategy::Named(db_name.to_string()),
+                        database: db_name.to_string(),
                     })),
                     _ => Err(StatusResponse::SyntaxErrorIllegalParameters),
                 },
