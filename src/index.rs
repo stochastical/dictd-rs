@@ -1,11 +1,14 @@
 /// Implements a dictionary reader for the .index format
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, btree_map::Range},
     fs::File,
     io::{BufRead, BufReader},
+    ops::Bound,
 };
 
 use thiserror::Error;
+
+use crate::protocol::SearchStrategy;
 
 const NUM_FIELDS: usize = 3 + 1;
 const FIELD_DELIMITER: char = '\t';
@@ -13,8 +16,9 @@ const HEADER_PREFIX: &str = "00-";
 
 #[derive(Error, Debug)]
 pub enum ParseError {
+    ///TODO: I'm catching these headers as Uknown instead. Parse don't validate?
     #[error("unknown header {0}")]
-    UnknownHeader(String), // TODO: I'm catching these headers as Uknown instead. Parse don't validate?
+    UnknownHeader(String),
     #[error("missing field")]
     MissingField,
     #[error("invalid base64 char {0}")]
@@ -58,11 +62,22 @@ pub struct Index {
 }
 
 impl Index {
-    /// IDEA: Abstract over the implementation
-    /// i.e. we don't need to know if this is a BTreeMap
-    /// or mmap'ed file etc
-    pub fn lookup(&self, word: &str) -> Option<&Vec<IndexEntry>> {
-        self.entries.get(word)
+    /// Phew, the type annotations on this was a mess!
+    pub fn lookup<'a>(
+        &'a self,
+        word: &'a str,
+        strategy: SearchStrategy,
+    ) -> Box<dyn Iterator<Item = (&'a Headword, &'a Vec<IndexEntry>)> + 'a> {
+        match strategy {
+            SearchStrategy::Exact => {
+                Box::new(self.entries.range(word.to_string()..=word.to_string()))
+            }
+            SearchStrategy::Prefix => Box::new(
+                self.entries
+                    .range(word.to_string()..)
+                    .take_while(move |(key, _)| key.starts_with(word)),
+            ),
+        }
     }
 
     pub fn parse_index(reader: BufReader<File>) -> Result<Index, ParseError> {
@@ -112,7 +127,7 @@ impl Index {
                 };
                 index.headers.push(DatabaseHeader { kind, entry });
             } else {
-               index.entries.entry(key.into()).or_default().push(entry);
+                index.entries.entry(key.into()).or_default().push(entry);
             }
         }
         Ok(index)
