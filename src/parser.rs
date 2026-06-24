@@ -1,4 +1,4 @@
-use crate::types::{Database, DatabaseLookupStrategy, SearchStrategy, StatusResponse};
+use crate::protocol::{DatabaseLookupStrategy, SearchStrategy, StatusResponse};
 
 #[derive(Debug)]
 pub enum ShowArgument {
@@ -106,7 +106,7 @@ impl TryFrom<&str> for Command {
                     db_name => DatabaseLookupStrategy::Named(db_name.to_string()),
                 },
                 strategy: match strategy.to_uppercase().as_str() {
-                    "." => SearchStrategy::Default,
+                    "." => SearchStrategy::default(),
                     "EXACT" => SearchStrategy::Exact,
                     "PREFIX" => SearchStrategy::Prefix,
                     _ => return Err(StatusResponse::InvalidStrategy), // TODO: is this considered validation?

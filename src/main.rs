@@ -4,8 +4,8 @@ use std::net::{TcpListener, TcpStream};
 use std::{env, fmt};
 
 use server::parser::Command;
-use server::types::StatusResponse;
 use server::dictionary::define_word;
+use server::protocol::StatusResponse;
 
 const DICT_SERVER_PORT: u16 = 2628;
 const LINE_BUFFER_MAX_CHARS: usize = 1024;

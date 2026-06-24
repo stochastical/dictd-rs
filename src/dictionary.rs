@@ -1,4 +1,17 @@
-use crate::types::{Database, DatabaseLookupStrategy, Definition};
+use crate::protocol::DatabaseLookupStrategy;
+
+#[derive(Debug)]
+pub struct Database {
+    pub name:          String,
+    pub database_info: String,
+}
+
+#[derive(Debug)]
+pub struct Definition {
+    pub database:   Database,
+    pub head_word:  String,
+    pub definition: String,
+}
 
 /// TEST: mock dictionary lookup
 pub fn define_word(

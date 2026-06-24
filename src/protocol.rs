@@ -1,34 +1,6 @@
 use std::fmt;
 
-#[derive(Debug)]
-pub struct Database {
-    pub(crate) name:          String,
-    pub(crate) database_info: String,
-}
-
-#[derive(Debug)]
-pub enum DatabaseLookupStrategy {
-    Named(String), // specific database
-    First,         // '!'
-    All,           // '*
-}
-
-/// Unsupported variants include:
-/// Substring, Suffix, Regex,
-/// Soundex, Levenshtein
-#[derive(Debug)]
-pub enum SearchStrategy {
-    Exact,
-    Prefix,
-    Default, // '.'
-}
-
-#[derive(Debug)]
-pub struct Definition {
-    pub database:   Database,
-    pub head_word:  String,
-    pub definition: String,
-}
+use crate::dictionary::Database;
 
 #[derive(Debug)]
 pub enum StatusResponse {
@@ -237,4 +209,19 @@ impl fmt::Display for StatusResponse {
             }
         }
     }
+}
+
+#[derive(Debug)]
+pub enum DatabaseLookupStrategy {
+    Named(String), // specific database
+    First,         // '!'
+    All,           // '*
+}
+
+/// Unsupported variants include: Substring, Suffix, Regex, Soundex, Levenshtein
+#[derive(Debug, Default)]
+pub enum SearchStrategy {
+    #[default] /// '.'
+    Exact,
+    Prefix,
 }
