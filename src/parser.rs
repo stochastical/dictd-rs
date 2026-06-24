@@ -36,8 +36,8 @@ pub enum ShowArgument {
 pub enum Command {
     /// DEFINE database word
     Define {
-        database: DatabaseLookupStrategy,
-        word:     String,
+        lookup: DatabaseLookupStrategy,
+        word:   String,
     },
     /// MATCH database strategy word
     Match {
@@ -89,7 +89,7 @@ impl TryFrom<&str> for Command {
         match (cmd.to_uppercase().as_str(), &tokens[1..]) {
             // DEFINE database word
             ("DEFINE", [database, word]) => Ok(Command::Define {
-                database: match *database {
+                lookup: match *database {
                     "!" => DatabaseLookupStrategy::First,
                     "*" => DatabaseLookupStrategy::All,
                     db_name => DatabaseLookupStrategy::Named(db_name.to_string()),

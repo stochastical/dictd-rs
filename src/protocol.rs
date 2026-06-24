@@ -1,7 +1,5 @@
 use std::fmt;
 
-use crate::dictionary::Database;
-
 #[derive(Debug)]
 pub enum StatusResponse {
     // 1yz - Positive Preliminary reply
@@ -22,10 +20,11 @@ pub enum StatusResponse {
     SASLChallengeFollows,
     /// * 150 n definitions retrieved - definitions follow
     WordFound { n_definitions: usize },
-    /// * 151 word database name - text follows      
+    /// * 151 word database name - text follows
     WordDefinition {
-        word:       String,
-        database:   Database,
+        headword:       String,
+        db_name:    String,
+        db_info:    String,
         definition: String,
     },
     /// * 152 n matches found - text follows   
@@ -146,13 +145,14 @@ impl fmt::Display for StatusResponse {
                 write!(f, "{} {n_definitions} definitions retrieved \r\n", code)
             }
             WordDefinition {
-                word,
-                database,
+                headword: word,
+                db_name: database_name,
+                db_info: database_info,
                 definition,
             } => write!(
                 f,
-                "{} \"{word}\" {} \"{}\"\r\n{}\r\n",
-                code, database.name, database.database_info, definition
+                "{} \"{word}\" {database_name} \"{database_info}\"\r\n{definition}\r\n",
+                code
             ),
             WordsMatched { n_matches } => {
                 write!(f, "{} {n_matches} matches found - text follows\r\n", code)

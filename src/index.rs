@@ -1,9 +1,8 @@
 /// Implements a dictionary reader for the .index format
 use std::{
-    collections::{BTreeMap, btree_map::Range},
+    collections::BTreeMap,
     fs::File,
     io::{BufRead, BufReader},
-    ops::Bound,
 };
 
 use thiserror::Error;
@@ -16,7 +15,7 @@ const HEADER_PREFIX: &str = "00-";
 
 #[derive(Error, Debug)]
 pub enum ParseError {
-    ///TODO: I'm catching these headers as Uknown instead. Parse don't validate?
+    ///TODO: I'm catching these headers as Unknown instead. Parse don't validate?
     #[error("unknown header {0}")]
     UnknownHeader(String),
     #[error("missing field")]
@@ -80,12 +79,12 @@ impl Index {
         }
     }
 
-    pub fn parse_index(reader: BufReader<File>) -> Result<Index, ParseError> {
+    pub fn parse(reader: BufReader<File>) -> Result<Self, ParseError> {
         let mut index = Index {
-            /// I wish we could use reflection to do Vec::with_capacity(DatabaseHeader.num_variants)
-            /// https://doc.rust-lang.org/std/mem/fn.variant_count.html
+            // I wish we could use reflection to do Vec::with_capacity(DatabaseHeader.num_variants)
+            // https://doc.rust-lang.org/std/mem/fn.variant_count.html
             headers: Vec::new(),
-            /// Should be able to get the approx entries length from the reader length, though?
+            // Should be able to get the approx entries length from the reader length, though?
             entries: BTreeMap::new(),
         };
 

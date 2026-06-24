@@ -1,11 +1,11 @@
-use std::fs::File;
-use std::io::{BufReader, prelude::*};
+use std::env;
+use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
-use std::{env, fmt};
+use std::path::Path;
 
+use server::database::Database;
 use server::parser::Command;
-use server::dictionary::define_word;
-use server::protocol::StatusResponse;
+use server::protocol::{SearchStrategy, StatusResponse};
 
 const DICT_SERVER_PORT: u16 = 2628;
 const LINE_BUFFER_MAX_CHARS: usize = 1024;
@@ -35,7 +35,9 @@ const HELP_LINES: &[&str] = &[
 /// I think we can bubble errors through here (e.g. client disconnects, and let the caller process it)
 /// TODO: it'd be nice to return a StatusResponse maybe?
 /// QUESTION: does the spec allow for multiple commands in a single connection? If so, we need to loop and read until the client disconnects, rather than returning after handling one command. Should there be a timeout on the connection?
-fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
+/// TODO: What's the best way to do dependency injection (i.e. we need to know about all databases etc...)
+fn handle_connection(mut stream: TcpStream, db: &mut Database) -> std::io::Result<()> {
+    // TODO: generalise to multiple DBs
     eprintln!("New client connection: {:#?}", &stream);
     write!(stream, "{}\r\n", StatusResponse::ClientIPAllowed)?;
 
@@ -76,8 +78,9 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
             Ok(Command::Client { .. }) => {
                 write!(stream, "{}", StatusResponse::Ok)?;
             }
-            Ok(Command::Define { database, word }) => {
-                let definitions = define_word(&word, database);
+            Ok(Command::Define { lookup, word }) => {
+                // TODO: handle multiple DBLookupStrategy
+                let definitions = db.lookup(&word, SearchStrategy::default());
                 if definitions.is_empty() {
                     write!(stream, "{}", StatusResponse::NoMatch)?;
                 } else {
@@ -89,15 +92,7 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
                         }
                     )?;
                     for definition in definitions {
-                        write!(
-                            stream,
-                            "{}",
-                            StatusResponse::WordDefinition {
-                                word: definition.head_word,
-                                database: definition.database,
-                                definition: definition.definition,
-                            }
-                        )?;
+                        write!(stream, "{}", definition)?;
                         write!(stream, ".\r\n")?;
                     }
                     write!(stream, "{}", StatusResponse::Ok)?;
@@ -139,16 +134,16 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
 }
 
 fn main() -> std::io::Result<()> {
-    // let index_path = env::args().nth(1).expect("Please pass in a .index file");
-    // let file = File::open(&index_path)?;
-    // let reader = BufReader::new(file);
+    let index_path = env::args().nth(1).expect("Please pass in a .index file");
+    let dict_path = env::args().nth(2).expect("Please pass in a .dict file");
+    let mut db = Database::new(Path::new(&index_path), Path::new(&dict_path)).unwrap();
 
     let listener = TcpListener::bind(format!("127.0.0.1:{DICT_SERVER_PORT}"))?;
 
     // accept connections and process them serially
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => match handle_connection(stream) {
+            Ok(stream) => match handle_connection(stream, &mut db) {
                 Ok(_handled) => {
                     eprintln!("Client connection completed.");
                 }

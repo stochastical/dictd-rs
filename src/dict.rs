@@ -1,17 +1,36 @@
 /// Implements a dictionary reader for the (uncompressed) .dict format
 use std::{
+    error::Error,
     fs::File,
-    io::{Read, Seek, SeekFrom},
+    io::{self, Read, Seek, SeekFrom},
+    path::Path,
 };
 
 use crate::index::IndexEntry;
 
-pub fn read_definition_from_dict(
-    dict: &mut File,
-    index: &IndexEntry,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let mut buf = String::with_capacity(index.length);
-    dbg!(dict.seek(SeekFrom::Start(index.offset as u64))?);
-    dbg!(dict.take(index.length as u64).read_to_string(&mut buf)?);
-    Ok(dbg!(buf))
+#[derive(Debug)]
+/// TODO: Should this just be a type alias, or should we store metadata here?
+/// And if so, should we use a constructor?
+pub struct Dictionary {
+    pub dict: File,
+}
+
+impl Dictionary {
+    pub fn new(path: &Path) -> io::Result<Self> {
+        Ok(Dictionary {
+            dict: File::open(path)?,
+        })
+    }
+
+    pub fn read(&mut self, entry: &IndexEntry) -> Result<String, Box<dyn Error>> {
+        let mut buf = String::with_capacity(entry.length);
+
+        self.dict.seek(SeekFrom::Start(entry.offset as u64))?;
+        self.dict
+            .by_ref()
+            .take(entry.length as u64)
+            .read_to_string(&mut buf)?;
+
+        Ok(buf)
+    }
 }
