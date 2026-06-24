@@ -5,7 +5,7 @@ use std::path::Path;
 
 use server::database::Database;
 use server::parser::Command;
-use server::protocol::{SearchStrategy, StatusResponse};
+use server::protocol::{DatabaseLookupStrategy, SearchStrategy, StatusResponse};
 
 const DICT_SERVER_PORT: u16 = 2628;
 const LINE_BUFFER_MAX_CHARS: usize = 1024;
@@ -36,7 +36,7 @@ const HELP_LINES: &[&str] = &[
 /// TODO: it'd be nice to return a StatusResponse maybe?
 /// QUESTION: does the spec allow for multiple commands in a single connection? If so, we need to loop and read until the client disconnects, rather than returning after handling one command. Should there be a timeout on the connection?
 /// TODO: What's the best way to do dependency injection (i.e. we need to know about all databases etc...)
-fn handle_connection(mut stream: TcpStream, db: &mut Database) -> std::io::Result<()> {
+fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::io::Result<()> {
     // TODO: generalise to multiple DBs
     eprintln!("New client connection: {:#?}", &stream);
     write!(stream, "{}\r\n", StatusResponse::ClientIPAllowed)?;
@@ -79,8 +79,26 @@ fn handle_connection(mut stream: TcpStream, db: &mut Database) -> std::io::Resul
                 write!(stream, "{}", StatusResponse::Ok)?;
             }
             Ok(Command::Define { lookup, word }) => {
-                // TODO: handle multiple DBLookupStrategy
-                let definitions = db.lookup(&word, SearchStrategy::default());
+                let definitions = match lookup {
+                    DatabaseLookupStrategy::Named(name) => {
+                        eprintln!("Looking up word '{}' in database '{}'", word, name);
+                        dbs.iter_mut()
+                            .filter(|db| db.name == name)
+                            .flat_map(|db| db.lookup(&word, SearchStrategy::default()))
+                            .collect()
+                    }
+                    DatabaseLookupStrategy::First => {
+                        eprintln!("Looking up word '{}' in first available database", word);
+                        dbs[0].lookup(&word, SearchStrategy::default())
+                    }
+                    DatabaseLookupStrategy::All => {
+                        eprintln!("Looking up word '{}' in all available databases", word);
+                        dbs.iter_mut()
+                            .flat_map(|db| db.lookup(&word, SearchStrategy::default()))
+                            .collect()
+                    }
+                };
+
                 if definitions.is_empty() {
                     write!(stream, "{}", StatusResponse::NoMatch)?;
                 } else {
@@ -99,11 +117,46 @@ fn handle_connection(mut stream: TcpStream, db: &mut Database) -> std::io::Resul
                 }
             }
             Ok(Command::Match {
-                database,
+                lookup,
                 strategy,
                 word,
             }) => {
-                unimplemented!()
+               let definitions = match lookup {
+                    DatabaseLookupStrategy::Named(name) => {
+                        eprintln!("Looking up word '{}' in database '{}'", word, name);
+                        dbs.iter_mut()
+                            .filter(|db| db.name == name)
+                            .flat_map(|db| db.lookup(&word, strategy))
+                            .collect()
+                    }
+                    DatabaseLookupStrategy::First => {
+                        eprintln!("Looking up word '{}' in first available database", word);
+                        dbs[0].lookup(&word, strategy)
+                    }
+                    DatabaseLookupStrategy::All => {
+                        eprintln!("Looking up word '{}' in all available databases", word);
+                        dbs.iter_mut()
+                            .flat_map(|db| db.lookup(&word, strategy))
+                            .collect()
+                    }
+                };
+
+                if definitions.is_empty() {
+                    write!(stream, "{}", StatusResponse::NoMatch)?;
+                } else {
+                    write!(
+                        stream,
+                        "{}",
+                        StatusResponse::WordsMatched {
+                            n_matches: definitions.len(),
+                        }
+                    )?;
+                    for definition in definitions {
+                        write!(stream, "{}", definition)?;
+                        write!(stream, ".\r\n")?;
+                    }
+                    write!(stream, "{}", StatusResponse::Ok)?;
+                }
             }
             Ok(Command::Show(_)) => {
                 unimplemented!()
@@ -143,7 +196,7 @@ fn main() -> std::io::Result<()> {
     // accept connections and process them serially
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => match handle_connection(stream, &mut db) {
+            Ok(stream) => match handle_connection(stream, &mut [&mut db]) {
                 Ok(_handled) => {
                     eprintln!("Client connection completed.");
                 }
@@ -159,5 +212,3 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-// #[cfg(test)]
-// mod test;

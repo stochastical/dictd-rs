@@ -22,7 +22,7 @@ pub enum StatusResponse {
     WordFound { n_definitions: usize },
     /// * 151 word database name - text follows
     WordDefinition {
-        headword:       String,
+        headword:   String,
         db_name:    String,
         db_info:    String,
         definition: String,
@@ -219,7 +219,7 @@ pub enum DatabaseLookupStrategy {
 }
 
 /// Unsupported variants include: Substring, Suffix, Regex, Soundex, Levenshtein
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub enum SearchStrategy {
     #[default] /// '.'
     Exact,

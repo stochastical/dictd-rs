@@ -41,7 +41,7 @@ pub enum Command {
     },
     /// MATCH database strategy word
     Match {
-        database: DatabaseLookupStrategy,
+        lookup: DatabaseLookupStrategy,
         strategy: SearchStrategy,
         word:     String,
     },
@@ -100,7 +100,7 @@ impl TryFrom<&str> for Command {
 
             // MATCH database strategy word
             ("MATCH", [database, strategy, word]) => Ok(Command::Match {
-                database: match *database {
+                lookup: match *database {
                     "!" => DatabaseLookupStrategy::First,
                     "*" => DatabaseLookupStrategy::All,
                     db_name => DatabaseLookupStrategy::Named(db_name.to_string()),
