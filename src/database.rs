@@ -12,7 +12,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Database {
     pub name: String,
-    pub info: String,
+    pub description: String,
     pub dict: Dictionary,
     pub index: Index,
 }
@@ -27,7 +27,7 @@ impl Database {
         // that way I can get values out of it easier than matching on an enum...
         Ok(Database {
             name: "gcide".into(),
-            info: "test_db_gcide".into(),
+            description: "test_db_gcide".into(),
             dict,
             index,
         })
@@ -44,7 +44,7 @@ impl Database {
                 definitions.push(WordDefinition {
                     headword: headword.into(),
                     db_name: self.name.clone(),
-                    db_info: self.info.clone(),
+                    db_info: self.description.clone(),
                     definition: self.dict.read(index).unwrap(),
                 });
             }
@@ -55,9 +55,12 @@ impl Database {
 
 #[derive(Debug)]
 pub struct DatabaseEngine {
+    /// A DatabaseEngine owns a Database which owns a Dictionary & Index
     pub dbs: Vec<Database>,
 }
 
+/// TODO: Technically the Engine should be agnostic to the strategy
+/// and different DB _implementations_ could support different stategies
 impl DatabaseEngine {
     pub fn lookup(
         &mut self,
@@ -65,9 +68,15 @@ impl DatabaseEngine {
         lookup_strat: DatabaseLookupStrategy,
         search_strat: SearchStrategy,
     ) -> Vec<StatusResponse> {
+        // TODO: We need to if self.dbs.len == 0 { return Err(NoDatabasesPresent); }
         match lookup_strat {
             DatabaseLookupStrategy::Named(name) => {
-                eprintln!("Looking up word '{}' in database '{}'", word, name);
+                eprintln!(
+                    "Looking up word '{word}' in database '{name}' using match strategy '{:?}'",
+                    search_strat
+                );
+                // TODO: we need to validate (parse?) db name else return InvalidDatabase
+
                 self.dbs
                     .iter_mut()
                     .filter(|db| db.name == name)
@@ -75,11 +84,17 @@ impl DatabaseEngine {
                     .collect()
             }
             DatabaseLookupStrategy::First => {
-                eprintln!("Looking up word '{}' in first available database", word);
+                eprintln!(
+                    "Looking up word '{word}' in first available database using match strategy '{:?}'",
+                    search_strat
+                );
                 self.dbs[0].lookup(&word, search_strat)
             }
             DatabaseLookupStrategy::All => {
-                eprintln!("Looking up word '{}' in all available databases", word);
+                eprintln!(
+                    "Looking up word '{word}' in all available databases using match strategy '{:?}'",
+                    search_strat
+                );
                 self.dbs
                     .iter_mut()
                     .flat_map(|db| db.lookup(&word, search_strat))

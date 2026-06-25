@@ -23,10 +23,7 @@ pub const HELP_LINES: &[&str] = &[
 pub enum StatusResponse {
     // 1yz - Positive Preliminary reply
     /// * 110 n databases present - text follows
-    DatabasesPresent {
-        n_databases: usize,
-        text:        String,
-    },
+    DatabasesPresent { n_databases: usize },
     /// * 111 n strategies available - text follows
     StrategiesAvailable { n_strategies: usize },
     /// 112 database information follows
@@ -41,9 +38,9 @@ pub enum StatusResponse {
     WordFound { n_definitions: usize },
     /// * 151 word database name - text follows
     WordDefinition {
-        headword:   String,
-        db_name:    String,
-        db_info:    String,
+        headword: String,
+        db_name: String,
+        db_info: String,
         definition: String,
     },
     /// * 152 n matches found - text follows   
@@ -142,7 +139,7 @@ impl fmt::Display for StatusResponse {
         use StatusResponse::*;
         let code = self.code();
         match self {
-            DatabasesPresent { n_databases, text } => write!(
+            DatabasesPresent { n_databases } => write!(
                 f,
                 "{code} {n_databases} databases present - text follows\r\n"
             ),
@@ -225,4 +222,9 @@ pub enum SearchStrategy {
     /// '.'
     Exact,
     Prefix,
+}
+
+impl SearchStrategy {
+    /// TODO: It would be nice to be able to do this automatically with reflection at compile time
+    pub const VARIANTS: [SearchStrategy; 2] = [SearchStrategy::Exact, SearchStrategy::Prefix];
 }

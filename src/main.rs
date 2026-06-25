@@ -4,7 +4,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 
 use server::database::{Database, DatabaseEngine};
-use server::parser::Command;
+use server::parser::{Command, ShowArgument};
 use server::protocol::{HELP_LINES, SearchStrategy, StatusResponse};
 use uuid::Uuid;
 
@@ -15,6 +15,7 @@ const MIME_HEADER: &[&str] = &[
     "Content-type: text/plain; charset=utf-8",
     "Content-transfer-encoding: 8bit",
 ];
+const SERVER_INFO: &str = "A server project by abstractnonsense.xyz <hello@ababstractnonsense.xyz>";
 
 /// I think we can bubble errors through here (e.g. client disconnects, and let the caller process it)
 /// TODO: it'd be nice to return a StatusResponse maybe?
@@ -82,7 +83,7 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut DatabaseEngine) -> std::io
                         }
                     )?;
                     for definition in definitions {
-                        write!(stream, "{definition}", )?;
+                        write!(stream, "{definition}",)?;
                         write!(stream, ".\r\n")?;
                     }
                     write!(stream, "{}", StatusResponse::Ok)?;
@@ -112,10 +113,49 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut DatabaseEngine) -> std::io
                     write!(stream, "{}", StatusResponse::Ok)?;
                 }
             }
-            Ok(Command::Show(_)) => {
-                todo!()
-            }
+            Ok(Command::Show(arg)) => match arg {
+                ShowArgument::Info { database } => {
+                    if let Some(db) = dbs.dbs.iter().find(|db| db.name == database) {
+                        write!(stream, "{}", StatusResponse::DatabaseInformation)?;
+                        write!(stream, "{}", db.description)?;
+                        write!(stream, ".\r\n")?;
+                    } else {
+                        write!(stream, "{}", StatusResponse::InvalidDatabase)?;
+                    };
+                }
+                ShowArgument::Databases => {
+                    write!(
+                        stream,
+                        "{}",
+                        StatusResponse::DatabasesPresent {
+                            n_databases: dbs.dbs.len()
+                        }
+                    )?;
 
+                    for db in &dbs.dbs {
+                        write!(stream, "{} {}\r\n", db.name, db.description)?;
+                    }
+                    write!(stream, ".\r\n")?;
+                }
+                ShowArgument::Strategies => {
+                    // I'm not bothering to implement 555 No strategies available
+                    // By the spec, I thought compliant servers must implement Exact & Prefix strategies anyways...
+                    write!(
+                        stream,
+                        "{}",
+                        StatusResponse::StrategiesAvailable {
+                            n_strategies: SearchStrategy::VARIANTS.len()
+                        }
+                    )?;
+                    for strat in SearchStrategy::VARIANTS {
+                        write!(stream, "{:?}\r\n", strat)?;
+                    }
+                    write!(stream, ".\r\n")?;
+                }
+                ShowArgument::Server => {
+                    write!(stream, "{SERVER_INFO}.\r\n")?;
+                }
+            },
             Ok(Command::Status) => {
                 write!(stream, "{}", StatusResponse::Status)?;
             }
