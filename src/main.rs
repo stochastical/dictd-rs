@@ -3,9 +3,9 @@ use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 
-use server::database::Database;
+use server::database::{Database, DatabaseEngine};
 use server::parser::Command;
-use server::protocol::{DatabaseLookupStrategy, HELP_LINES, SearchStrategy, StatusResponse};
+use server::protocol::{HELP_LINES, SearchStrategy, StatusResponse};
 use uuid::Uuid;
 
 const DICT_SERVER_PORT: u16 = 2628;
@@ -20,8 +20,7 @@ const MIME_HEADER: &[&str] = &[
 /// TODO: it'd be nice to return a StatusResponse maybe?
 /// QUESTION: does the spec allow for multiple commands in a single connection? If so, we need to loop and read until the client disconnects, rather than returning after handling one command. Should there be a timeout on the connection?
 /// TODO: What's the best way to do dependency injection (i.e. we need to know about all databases etc...)
-fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::io::Result<()> {
-    // TODO: generalise to multiple DBs
+fn handle_connection(mut stream: TcpStream, dbs: &mut DatabaseEngine) -> std::io::Result<()> {
     eprintln!("New client connection: {:#?}", &stream);
     write!(
         stream,
@@ -70,25 +69,7 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::i
                 write!(stream, "{}", StatusResponse::Ok)?;
             }
             Ok(Command::Define { lookup, word }) => {
-                let definitions = match lookup {
-                    DatabaseLookupStrategy::Named(name) => {
-                        eprintln!("Looking up word '{}' in database '{}'", word, name);
-                        dbs.iter_mut()
-                            .filter(|db| db.name == name)
-                            .flat_map(|db| db.lookup(&word, SearchStrategy::default()))
-                            .collect()
-                    }
-                    DatabaseLookupStrategy::First => {
-                        eprintln!("Looking up word '{}' in first available database", word);
-                        dbs[0].lookup(&word, SearchStrategy::default())
-                    }
-                    DatabaseLookupStrategy::All => {
-                        eprintln!("Looking up word '{}' in all available databases", word);
-                        dbs.iter_mut()
-                            .flat_map(|db| db.lookup(&word, SearchStrategy::default()))
-                            .collect()
-                    }
-                };
+                let definitions = dbs.lookup(&word, lookup, SearchStrategy::default());
 
                 if definitions.is_empty() {
                     write!(stream, "{}", StatusResponse::NoMatch)?;
@@ -101,7 +82,7 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::i
                         }
                     )?;
                     for definition in definitions {
-                        write!(stream, "{}", definition)?;
+                        write!(stream, "{definition}", )?;
                         write!(stream, ".\r\n")?;
                     }
                     write!(stream, "{}", StatusResponse::Ok)?;
@@ -112,25 +93,7 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::i
                 strategy,
                 word,
             }) => {
-                let definitions = match lookup {
-                    DatabaseLookupStrategy::Named(name) => {
-                        eprintln!("Looking up word '{}' in database '{}'", word, name);
-                        dbs.iter_mut()
-                            .filter(|db| db.name == name)
-                            .flat_map(|db| db.lookup(&word, strategy))
-                            .collect()
-                    }
-                    DatabaseLookupStrategy::First => {
-                        eprintln!("Looking up word '{}' in first available database", word);
-                        dbs[0].lookup(&word, strategy)
-                    }
-                    DatabaseLookupStrategy::All => {
-                        eprintln!("Looking up word '{}' in all available databases", word);
-                        dbs.iter_mut()
-                            .flat_map(|db| db.lookup(&word, strategy))
-                            .collect()
-                    }
-                };
+                let definitions = dbs.lookup(&word, lookup, strategy);
 
                 if definitions.is_empty() {
                     write!(stream, "{}", StatusResponse::NoMatch)?;
@@ -143,14 +106,14 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::i
                         }
                     )?;
                     for definition in definitions {
-                        write!(stream, "{}", definition)?;
+                        write!(stream, "{definition}")?;
                         write!(stream, ".\r\n")?;
                     }
                     write!(stream, "{}", StatusResponse::Ok)?;
                 }
             }
             Ok(Command::Show(_)) => {
-                unimplemented!()
+                todo!()
             }
 
             Ok(Command::Status) => {
@@ -163,14 +126,14 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::i
                     "{} ok - using MIME headers\r\n",
                     StatusResponse::Ok.code()
                 )?;
-                unimplemented!();
+                todo!();
             }
             Ok(Command::Auth { .. }) => {
                 write!(stream, "{}", StatusResponse::CommandNotImplemented)?;
-                todo!()
+                unimplemented!()
             }
             Err(status_response) => {
-                write!(stream, "{}", status_response)?;
+                write!(stream, "{status_response}")?;
             }
         }
     }
@@ -180,14 +143,16 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::i
 fn main() -> std::io::Result<()> {
     let index_path = env::args().nth(1).expect("Please pass in a .index file");
     let dict_path = env::args().nth(2).expect("Please pass in a .dict file");
+
     let mut db = Database::new(Path::new(&index_path), Path::new(&dict_path)).unwrap();
+    let mut dbs = DatabaseEngine { dbs: vec![db] };
 
     let listener = TcpListener::bind(format!("127.0.0.1:{DICT_SERVER_PORT}"))?;
 
     // accept connections and process them serially
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => match handle_connection(stream, &mut [&mut db]) {
+            Ok(stream) => match handle_connection(stream, &mut dbs) {
                 Ok(_handled) => {
                     eprintln!("Client connection completed.");
                 }

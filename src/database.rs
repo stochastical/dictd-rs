@@ -4,16 +4,16 @@ use crate::{
     dict::Dictionary,
     index::{Index, ParseError},
     protocol::{
-        SearchStrategy,
+        DatabaseLookupStrategy, SearchStrategy,
         StatusResponse::{self, WordDefinition},
     },
 };
 
 #[derive(Debug)]
 pub struct Database {
-    pub name:  String,
-    pub info:  String,
-    pub dict:  Dictionary,
+    pub name: String,
+    pub info: String,
+    pub dict: Dictionary,
     pub index: Index,
 }
 
@@ -42,9 +42,9 @@ impl Database {
         for (headword, indices) in matches {
             for index in indices {
                 definitions.push(WordDefinition {
-                    headword:   headword.into(),
-                    db_name:    self.name.clone(),
-                    db_info:    self.info.clone(),
+                    headword: headword.into(),
+                    db_name: self.name.clone(),
+                    db_info: self.info.clone(),
                     definition: self.dict.read(index).unwrap(),
                 });
             }
@@ -53,8 +53,38 @@ impl Database {
     }
 }
 
-// #[derive(Debug)]
-// pub struct DatabaseEngine {
-//     pub dbs: [Database]
-// }
+#[derive(Debug)]
+pub struct DatabaseEngine {
+    pub dbs: Vec<Database>,
+}
 
+impl DatabaseEngine {
+    pub fn lookup(
+        &mut self,
+        word: &str,
+        lookup_strat: DatabaseLookupStrategy,
+        search_strat: SearchStrategy,
+    ) -> Vec<StatusResponse> {
+        match lookup_strat {
+            DatabaseLookupStrategy::Named(name) => {
+                eprintln!("Looking up word '{}' in database '{}'", word, name);
+                self.dbs
+                    .iter_mut()
+                    .filter(|db| db.name == name)
+                    .flat_map(|db| db.lookup(&word, search_strat))
+                    .collect()
+            }
+            DatabaseLookupStrategy::First => {
+                eprintln!("Looking up word '{}' in first available database", word);
+                self.dbs[0].lookup(&word, search_strat)
+            }
+            DatabaseLookupStrategy::All => {
+                eprintln!("Looking up word '{}' in all available databases", word);
+                self.dbs
+                    .iter_mut()
+                    .flat_map(|db| db.lookup(&word, search_strat))
+                    .collect()
+            }
+        }
+    }
+}
