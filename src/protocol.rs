@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Display, write};
 
 use uuid::Uuid;
 
@@ -227,4 +227,13 @@ pub enum SearchStrategy {
 impl SearchStrategy {
     /// TODO: It would be nice to be able to do this automatically with reflection at compile time
     pub const VARIANTS: [SearchStrategy; 2] = [SearchStrategy::Exact, SearchStrategy::Prefix];
+}
+
+impl Display for SearchStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SearchStrategy::Exact => write!(f, "exact \"Match headwords exactly\""),
+            SearchStrategy::Prefix => write!(f, "prefix \"Match prefixes\""),
+        }
+    }
 }

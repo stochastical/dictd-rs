@@ -2,7 +2,7 @@ use std::{fs::File, io::BufReader, path::Path};
 
 use crate::{
     dict::Dictionary,
-    index::{Index, ParseError},
+    index::{Headword, Index, ParseError},
     protocol::{
         DatabaseLookupStrategy, SearchStrategy,
         StatusResponse::{self, WordDefinition},
@@ -35,6 +35,7 @@ impl Database {
 
     /// Resolves matches from the index to the corresponding dict entries for definitions
     /// TODO: strange we only return 1 variant?
+    /// TODO: We need case-insensitivity
     pub fn lookup(&mut self, word: &str, strategy: SearchStrategy) -> Vec<StatusResponse> {
         let matches = self.index.lookup(word, strategy);
         let mut definitions = Vec::new();
@@ -50,6 +51,13 @@ impl Database {
             }
         }
         definitions
+    }
+
+    pub fn find_matches(&self, word: &str, strategy: SearchStrategy) -> Vec<(String, Headword)> {
+        self.index
+            .lookup(word, strategy)
+            .map(|(headword, _)| (self.name.clone(), headword.clone()))
+            .collect()
     }
 }
 
@@ -100,6 +108,32 @@ impl DatabaseEngine {
                     .flat_map(|db| db.lookup(&word, search_strat))
                     .collect()
             }
+        }
+    }
+
+    pub fn find_matches(
+        &self,
+        word: &str,
+        lookup_strat: DatabaseLookupStrategy,
+        search_strat: SearchStrategy,
+    ) -> Vec<(String, String)> {
+        match &lookup_strat {
+            DatabaseLookupStrategy::Named(name) => self
+                .dbs
+                .iter()
+                .filter(|db| &db.name == name)
+                .flat_map(|db| db.find_matches(word, search_strat))
+                .collect(),
+            DatabaseLookupStrategy::First => self
+                .dbs
+                .first()
+                .map(|db| db.find_matches(word, search_strat))
+                .unwrap_or_default(),
+            DatabaseLookupStrategy::All => self
+                .dbs
+                .iter()
+                .flat_map(|db| db.find_matches(word, search_strat))
+                .collect(),
         }
     }
 }
