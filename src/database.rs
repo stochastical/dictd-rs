@@ -21,13 +21,26 @@ pub struct Database {
 impl Database {
     pub fn new(index_path: &Path, dict_path: &Path) -> Result<Self, ParseError> {
         let index = Index::parse(BufReader::new(File::open(index_path).unwrap()))?;
-        let dict = Dictionary::new(dict_path).unwrap();
-        // TODO: resolve headers into metadata?
-        // TODO: maybe it would be header for headers to be a simple key-value map?
-        // that way I can get values out of it easier than matching on an enum...
+        let mut dict = Dictionary::new(dict_path).unwrap();
+
+        // TODO: resolve headers into metadata and clean up
+        let name = index
+            .headers
+            .get("00-database-short")
+            .and_then(|entry| dict.read(entry).ok())
+            .map(|s| s.to_string())
+            .unwrap();
+
+        let description = index
+            .headers
+            .get("00-database-info")
+            .and_then(|entry| dict.read(entry).ok())
+            .map(|s| s.to_string())
+            .unwrap();
+
         Ok(Database {
-            name: "gcide".into(),
-            description: "test_db_gcide".into(),
+            name,
+            description,
             dict,
             index,
         })

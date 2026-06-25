@@ -1,6 +1,6 @@
 /// Implements a dictionary reader for the .index format
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fs::File,
     io::{BufRead, BufReader},
 };
@@ -26,26 +26,6 @@ pub enum ParseError {
     ExtraField,
 }
 
-#[derive(Debug)]
-pub enum HeaderKind {
-    Info,
-    ShortName,
-    LongName,
-    Url,
-    Alphabet,
-    Utf8,
-    DefaultStrategy,
-    AllChars,
-    CaseSensitive,
-    Unknown(String),
-}
-
-#[derive(Debug)]
-pub struct DatabaseHeader {
-    kind:  HeaderKind,
-    entry: IndexEntry,
-}
-
 pub type Headword = String;
 
 #[derive(Debug)]
@@ -56,7 +36,7 @@ pub struct IndexEntry {
 
 #[derive(Debug)]
 pub struct Index {
-    pub headers: Vec<DatabaseHeader>,
+    pub headers: HashMap<String, IndexEntry>,
     pub entries: BTreeMap<Headword, Vec<IndexEntry>>,
 }
 
@@ -81,9 +61,7 @@ impl Index {
 
     pub fn parse(reader: BufReader<File>) -> Result<Self, ParseError> {
         let mut index = Index {
-            // I wish we could use reflection to do Vec::with_capacity(DatabaseHeader.num_variants)
-            // https://doc.rust-lang.org/std/mem/fn.variant_count.html
-            headers: Vec::new(),
+            headers: HashMap::new(),
             // Should be able to get the approx entries length from the reader length, though?
             entries: BTreeMap::new(),
         };
@@ -111,20 +89,8 @@ impl Index {
                 length: length as usize,
             };
 
-            if let Some(header_type) = key.strip_prefix(HEADER_PREFIX) {
-                let kind = match header_type {
-                    "database-alphabet" => HeaderKind::Alphabet,
-                    "database-info" => HeaderKind::Info,
-                    "database-short" => HeaderKind::ShortName,
-                    "database-long" => HeaderKind::LongName,
-                    "database-url" => HeaderKind::Url,
-                    "database-utf8" => HeaderKind::Utf8,
-                    "database-defaultstrategy" => HeaderKind::DefaultStrategy,
-                    "database-allchars" => HeaderKind::AllChars,
-                    "database-casesensitive" => HeaderKind::CaseSensitive,
-                    _ => HeaderKind::Unknown(key.into()),
-                };
-                index.headers.push(DatabaseHeader { kind, entry });
+            if key.starts_with(HEADER_PREFIX) {
+                index.headers.insert(key.into(), entry);
             } else {
                 index.entries.entry(key.into()).or_default().push(entry);
             }
