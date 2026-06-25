@@ -1,5 +1,7 @@
 use std::fmt;
 
+use uuid::Uuid;
+
 #[derive(Debug)]
 pub enum StatusResponse {
     // 1yz - Positive Preliminary reply
@@ -34,7 +36,7 @@ pub enum StatusResponse {
     /// 210 (optional timing and statistical information here)
     Status,
     /// * 220 text msg-id            
-    ClientIPAllowed,
+    ClientIPAllowed { text: String, msg_id: Uuid },
     /// 221 Closing Connection   
     Quit,
     /// 230 Authentication successful     
@@ -94,7 +96,7 @@ impl StatusResponse {
             WordDefinition { .. }           => 151,
             WordsMatched { .. }             => 152,
             Status                          => 210,
-            ClientIPAllowed                 => 220,
+            ClientIPAllowed { .. }          => 220,
             Quit                            => 221,
             AuthenticationSuccessful        => 230,
             Ok                              => 250,
@@ -125,88 +127,69 @@ impl fmt::Display for StatusResponse {
         match self {
             DatabasesPresent { n_databases, text } => write!(
                 f,
-                "{} {n_databases} databases present - text follows\r\n",
-                code
+                "{code} {n_databases} databases present - text follows\r\n"
             ),
             StrategiesAvailable { n_strategies } => {
-                write!(f, "{} {n_strategies} strategies present\r\n", code)
+                write!(f, "{code} {n_strategies} strategies present\r\n")
             }
-            DatabaseInformation => {
-                write!(f, "{} database information follows\r\n", code)
-            }
-            Help => write!(f, "{} help text follows\r\n", code),
-            ServerInformation => {
-                write!(f, "{} server information follows\r\n", code)
-            }
+            DatabaseInformation => write!(f, "{code} database information follows\r\n"),
+            Help => write!(f, "{code} help text follows\r\n"),
+            ServerInformation => write!(f, "{code} server information follows\r\n"),
+
             SASLChallengeFollows => {
-                write!(f, "{} challenge follows\r\n", code)
+                write!(f, "{code} challenge follows\r\n")
             }
             WordFound { n_definitions } => {
-                write!(f, "{} {n_definitions} definitions retrieved \r\n", code)
+                write!(f, "{code} {n_definitions} definitions retrieved \r\n")
             }
             WordDefinition {
-                headword: word,
-                db_name: database_name,
-                db_info: database_info,
+                headword,
+                db_name,
+                db_info,
                 definition,
             } => write!(
                 f,
-                "{} \"{word}\" {database_name} \"{database_info}\"\r\n{definition}\r\n",
-                code
+                "{code} \"{headword}\" {db_name} \"{db_info}\"\r\n{definition}\r\n"
             ),
             WordsMatched { n_matches } => {
-                write!(f, "{} {n_matches} matches found - text follows\r\n", code)
+                write!(f, "{code} {n_matches} matches found - text follows\r\n")
             }
-            Status => write!(f, "{} status <DUMMY_STATUS>\r\n", code),
-            ClientIPAllowed => write!(f, "{} <DUMMY_REQUEST_ID>\r\n", code),
-            Quit => write!(f, "{} bye\r\n", code),
-            AuthenticationSuccessful => {
-                write!(f, "{} authentication successful\r\n", code)
-            }
-            Ok => write!(f, "{} ok\r\n", code),
-            SASLSendResponse => write!(f, "{} send response\r\n", code),
-            ServerTemporarilyUnavailable => {
-                write!(f, "{} server temporarily unavailable\r\n", code)
-            }
+            Status => write!(f, "{code} status <DUMMY_STATUS>\r\n"),
+            ClientIPAllowed { text, msg_id } => write!(f, "{code} {msg_id} {text}\r\n"),
+            Quit => write!(f, "{code} bye\r\n"),
+            AuthenticationSuccessful => write!(f, "{code} authentication successful\r\n"),
+            Ok => write!(f, "{code} ok\r\n"),
+            SASLSendResponse => write!(f, "{code} send response\r\n"),
+            ServerTemporarilyUnavailable => write!(f, "{code} server temporarily unavailable\r\n"),
             ServerShutdownOperatorRequest => {
-                write!(f, "{} server shutting down at operator request\r\n", code)
+                write!(f, "{code} server shutting down at operator request\r\n")
             }
-            SyntaxErrorCommandNotRecognised => {
-                write!(f, "{} unknown command\r\n", code)
-            }
+            SyntaxErrorCommandNotRecognised => write!(f, "{code} unknown command\r\n"),
             SyntaxErrorIllegalParameters => {
-                write!(f, "{} syntax error, illegal parameters\r\n", code)
+                write!(f, "{code} syntax error, illegal parameters\r\n")
             }
-            CommandNotImplemented => {
-                write!(f, "{} command not implemented\r\n", code)
-            }
+
+            CommandNotImplemented => write!(f, "{code} command not implemented\r\n"),
             CommandParameterNotImplemented => {
-                write!(f, "{} command parameter not implemented\r\n", code)
+                write!(f, "{code} command parameter not implemented\r\n")
             }
             AccessDeniedIPBlocked => write!(f, "{} access denied\r\n", code),
             AccessDenied => write!(
                 f,
-                "{} access denied, use \"SHOW INFO\" for server information\r\n",
-                code
+                "{code} access denied, use \"SHOW INFO\" for server information\r\n"
             ),
-            SASLUnknownMechanism => write!(f, "{} access denied, unknown mechanism\r\n", code),
+            SASLUnknownMechanism => write!(f, "{code} access denied, unknown mechanism\r\n"),
             InvalidDatabase => write!(
                 f,
-                "{} invalid database, use \"SHOW DB\" for list of databases\r\n",
-                code
+                "{code} invalid database, use \"SHOW DB\" for list of databases\r\n"
             ),
             InvalidStrategy => write!(
                 f,
-                "{} invalid strategy, use \"SHOW STRAT\" for a list of strategies\r\n",
-                code
+                "{code} invalid strategy, use \"SHOW STRAT\" for a list of strategies\r\n"
             ),
-            NoMatch => write!(f, "{} no match\r\n", code),
-            NoDatabasesPresent => {
-                write!(f, "{} no databases present\r\n", code)
-            }
-            NoStrategiesAvailable => {
-                write!(f, "{} no strategies available\r\n", code)
-            }
+            NoMatch => write!(f, "{code} no match\r\n"),
+            NoDatabasesPresent => write!(f, "{code} no databases present\r\n"),
+            NoStrategiesAvailable => write!(f, "{code} no strategies available\r\n"),
         }
     }
 }
@@ -221,7 +204,8 @@ pub enum DatabaseLookupStrategy {
 /// Unsupported variants include: Substring, Suffix, Regex, Soundex, Levenshtein
 #[derive(Debug, Default, Clone, Copy)]
 pub enum SearchStrategy {
-    #[default] /// '.'
+    #[default]
+    /// '.'
     Exact,
     Prefix,
 }

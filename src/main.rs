@@ -6,6 +6,7 @@ use std::path::Path;
 use server::database::Database;
 use server::parser::Command;
 use server::protocol::{DatabaseLookupStrategy, SearchStrategy, StatusResponse};
+use uuid::Uuid;
 
 const DICT_SERVER_PORT: u16 = 2628;
 const LINE_BUFFER_MAX_CHARS: usize = 1024;
@@ -39,7 +40,14 @@ const HELP_LINES: &[&str] = &[
 fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::io::Result<()> {
     // TODO: generalise to multiple DBs
     eprintln!("New client connection: {:#?}", &stream);
-    write!(stream, "{}\r\n", StatusResponse::ClientIPAllowed)?;
+    write!(
+        stream,
+        "{}\r\n",
+        StatusResponse::ClientIPAllowed {
+            text:   "dictd-rs".into(),
+            msg_id: Uuid::new_v4(),
+        }
+    )?;
 
     loop {
         let mut buffer = [0; LINE_BUFFER_MAX_BYTES];
@@ -121,7 +129,7 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::i
                 strategy,
                 word,
             }) => {
-               let definitions = match lookup {
+                let definitions = match lookup {
                     DatabaseLookupStrategy::Named(name) => {
                         eprintln!("Looking up word '{}' in database '{}'", word, name);
                         dbs.iter_mut()
@@ -211,4 +219,3 @@ fn main() -> std::io::Result<()> {
     }
     Ok(())
 }
-
