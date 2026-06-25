@@ -5,7 +5,7 @@ use std::path::Path;
 
 use server::database::Database;
 use server::parser::Command;
-use server::protocol::{DatabaseLookupStrategy, SearchStrategy, StatusResponse};
+use server::protocol::{DatabaseLookupStrategy, HELP_LINES, SearchStrategy, StatusResponse};
 use uuid::Uuid;
 
 const DICT_SERVER_PORT: u16 = 2628;
@@ -14,23 +14,6 @@ const LINE_BUFFER_MAX_BYTES: usize = 6144; // 1024 * 6
 const MIME_HEADER: &[&str] = &[
     "Content-type: text/plain; charset=utf-8",
     "Content-transfer-encoding: 8bit",
-];
-
-const HELP_LINES: &[&str] = &[
-    "DEFINE database word         -- look up word in database",
-    "MATCH database strategy word -- match word in database using strategy",
-    "SHOW DB                      -- list all accessible databases",
-    "SHOW DATABASES               -- list all accessible databases",
-    "SHOW STRAT                   -- list available matching strategies",
-    "SHOW STRATEGIES              -- list available matching strategies",
-    "SHOW INFO database           -- provide information about the database",
-    "SHOW SERVER                  -- provide site-specific information",
-    "OPTION MIME                  -- use MIME headers",
-    "CLIENT info                  -- identify client to server",
-    "AUTH user string             -- provide authentication information",
-    "STATUS                       -- display timing information",
-    "HELP                         -- display this help information",
-    "QUIT                         -- terminate connection",
 ];
 
 /// I think we can bubble errors through here (e.g. client disconnects, and let the caller process it)
@@ -44,7 +27,7 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut [&mut Database]) -> std::i
         stream,
         "{}\r\n",
         StatusResponse::ClientIPAllowed {
-            text:   "dictd-rs".into(),
+            text: "dictd-rs".into(),
             msg_id: Uuid::new_v4(),
         }
     )?;

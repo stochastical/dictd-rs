@@ -2,6 +2,23 @@ use std::fmt;
 
 use uuid::Uuid;
 
+pub const HELP_LINES: &[&str] = &[
+    "DEFINE database word         -- look up word in database",
+    "MATCH database strategy word -- match word in database using strategy",
+    "SHOW DB                      -- list all accessible databases",
+    "SHOW DATABASES               -- list all accessible databases",
+    "SHOW STRAT                   -- list available matching strategies",
+    "SHOW STRATEGIES              -- list available matching strategies",
+    "SHOW INFO database           -- provide information about the database",
+    "SHOW SERVER                  -- provide site-specific information",
+    "OPTION MIME                  -- use MIME headers",
+    "CLIENT info                  -- identify client to server",
+    "AUTH user string             -- provide authentication information",
+    "STATUS                       -- display timing information",
+    "HELP                         -- display this help information",
+    "QUIT                         -- terminate connection",
+];
+
 #[derive(Debug)]
 pub enum StatusResponse {
     // 1yz - Positive Preliminary reply

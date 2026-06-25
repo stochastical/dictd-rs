@@ -42,7 +42,7 @@ pub enum HeaderKind {
 
 #[derive(Debug)]
 pub struct DatabaseHeader {
-    kind: HeaderKind,
+    kind:  HeaderKind,
     entry: IndexEntry,
 }
 

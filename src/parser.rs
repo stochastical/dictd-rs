@@ -41,7 +41,7 @@ pub enum Command {
     },
     /// MATCH database strategy word
     Match {
-        lookup: DatabaseLookupStrategy,
+        lookup:   DatabaseLookupStrategy,
         strategy: SearchStrategy,
         word:     String,
     },
@@ -94,13 +94,13 @@ impl TryFrom<&str> for Command {
                     "*" => DatabaseLookupStrategy::All,
                     db_name => DatabaseLookupStrategy::Named(db_name.to_string()),
                 },
-                word:     word.to_string(),
+                word:   word.to_string(),
             }),
             ("DEFINE", _) => Err(StatusResponse::SyntaxErrorIllegalParameters),
 
             // MATCH database strategy word
             ("MATCH", [database, strategy, word]) => Ok(Command::Match {
-                lookup: match *database {
+                lookup:   match *database {
                     "!" => DatabaseLookupStrategy::First,
                     "*" => DatabaseLookupStrategy::All,
                     db_name => DatabaseLookupStrategy::Named(db_name.to_string()),

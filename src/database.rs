@@ -11,9 +11,9 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Database {
-    pub name: String,
-    pub info: String,
-    pub dict: Dictionary,
+    pub name:  String,
+    pub info:  String,
+    pub dict:  Dictionary,
     pub index: Index,
 }
 
@@ -26,8 +26,8 @@ impl Database {
         // TODO: maybe it would be header for headers to be a simple key-value map?
         // that way I can get values out of it easier than matching on an enum...
         Ok(Database {
-            name: "test".into(),
-            info: "test_db".into(),
+            name: "gcide".into(),
+            info: "test_db_gcide".into(),
             dict,
             index,
         })
@@ -42,9 +42,9 @@ impl Database {
         for (headword, indices) in matches {
             for index in indices {
                 definitions.push(WordDefinition {
-                    headword: headword.into(),
-                    db_name: self.name.clone(),
-                    db_info: self.info.clone(),
+                    headword:   headword.into(),
+                    db_name:    self.name.clone(),
+                    db_info:    self.info.clone(),
                     definition: self.dict.read(index).unwrap(),
                 });
             }
@@ -52,3 +52,9 @@ impl Database {
         definitions
     }
 }
+
+// #[derive(Debug)]
+// pub struct DatabaseEngine {
+//     pub dbs: [Database]
+// }
+
