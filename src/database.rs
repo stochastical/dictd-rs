@@ -33,7 +33,7 @@ impl Database {
 
         let description = index
             .headers
-            .get("00-database-info")
+            .get("00-database-url")
             .and_then(|entry| dict.read(entry).ok())
             .map(|s| s.to_string())
             .unwrap();

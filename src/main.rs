@@ -1,5 +1,5 @@
 use std::env;
-use std::io::prelude::*;
+use std::io::{BufReader, prelude::*};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 
@@ -23,6 +23,9 @@ const SERVER_INFO: &str = "A server project by abstractnonsense.xyz <hello@abstr
 /// TODO: What's the best way to do dependency injection (i.e. we need to know about all databases etc...)
 fn handle_connection(mut stream: TcpStream, dbs: &mut DatabaseEngine) -> std::io::Result<()> {
     eprintln!("New client connection: {:#?}", &stream);
+    let mut reader = BufReader::new(stream.try_clone()?);
+
+    // Send server banner
     write!(
         stream,
         "{}\r\n",
@@ -32,28 +35,23 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut DatabaseEngine) -> std::io
         }
     )?;
 
-    loop {
-        let mut buffer = [0; LINE_BUFFER_MAX_BYTES];
-        let bytes_read: usize = stream.read(&mut buffer)?;
+    let mut line = String::with_capacity(LINE_BUFFER_MAX_CHARS);
 
-        // Validate bytes read and UTF-8 encoding before trying to parse the command.
+    loop {
+        line.clear();
+        let bytes_read: usize = reader.read_line(&mut line)?;
+
         if bytes_read == 0 {
-            eprintln!("Client dropped connection. Connection closed.");
+            eprintln!("EOF or client closed connection");
             break;
         }
-        let Ok(command_line) = dbg!(str::from_utf8(&buffer[..bytes_read])) else {
-            eprintln!("Client sent invalid UTF-8.");
-            write!(
-                stream,
-                "{}",
-                StatusResponse::SyntaxErrorCommandNotRecognised
-            )?;
-            continue;
-        };
+
+        let command_line = line.trim_end_matches(['\r', '\n']);
         if command_line.chars().count() > LINE_BUFFER_MAX_CHARS {
             write!(stream, "{}", StatusResponse::SyntaxErrorIllegalParameters)?;
             continue;
         }
+        // TODO: blank lines should just continue, I don't think I need a 500 unknown command returned
 
         match dbg!(Command::try_from(command_line)) {
             Ok(Command::Quit) => {
