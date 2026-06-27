@@ -8,6 +8,9 @@ use server::parser::{Command, ShowArgument};
 use server::protocol::{HELP_LINES, SearchStrategy, StatusResponse};
 use uuid::Uuid;
 
+// TODO: define server struct (with assoc. constants + list of clients + )
+// TODO: define client struct (with UUID + stream)
+
 const DICT_SERVER_PORT: u16 = 2628;
 const LINE_BUFFER_MAX_CHARS: usize = 1024;
 const LINE_BUFFER_MAX_BYTES: usize = 6144; // 1024 * 6
@@ -17,9 +20,8 @@ const MIME_HEADER: &[&str] = &[
 ];
 const SERVER_INFO: &str = "A server project by abstractnonsense.xyz <hello@abstractnonsense.xyz>";
 
-/// I think we can bubble errors through here (e.g. client disconnects, and let the caller process it)
 /// TODO: it'd be nice to return a StatusResponse maybe?
-/// QUESTION: does the spec allow for multiple commands in a single connection? If so, we need to loop and read until the client disconnects, rather than returning after handling one command. Should there be a timeout on the connection?
+/// TODO: Should there be a timeout on the connection?
 /// TODO: What's the best way to do dependency injection (i.e. we need to know about all databases etc...)
 fn handle_connection(mut stream: TcpStream, dbs: &mut DatabaseEngine) -> std::io::Result<()> {
     eprintln!("New client connection: {:#?}", &stream);
