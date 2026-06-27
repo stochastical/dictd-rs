@@ -49,7 +49,7 @@ impl Index {
     ) -> Box<dyn Iterator<Item = (&'a Headword, &'a Vec<IndexEntry>)> + 'a> {
         match strategy {
             SearchStrategy::Exact => {
-                Box::new(self.entries.range(word.to_string()..=word.to_string()))
+                Box::new(self.entries.get_key_value(word).into_iter())
             }
             SearchStrategy::Prefix => Box::new(
                 self.entries
