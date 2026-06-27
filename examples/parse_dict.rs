@@ -1,6 +1,6 @@
 use std::{env, fs::File};
 
-use server::{dict::Dictionary, index::IndexEntry};
+use dictd::{dict::Dictionary, index::IndexEntry};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = env::args().nth(1).expect("Please pass in a .dict file");

@@ -3,9 +3,9 @@ use std::io::{BufReader, prelude::*};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 
-use server::database::{Database, DatabaseEngine};
-use server::parser::{Command, ShowArgument};
-use server::protocol::{HELP_LINES, SearchStrategy, StatusResponse};
+use dictd::database::{Database, DatabaseEngine};
+use dictd::parser::{Command, ShowArgument};
+use dictd::protocol::{HELP_LINES, SearchStrategy, StatusResponse};
 use uuid::Uuid;
 
 // TODO: define server struct (with assoc. constants + list of clients + )
@@ -171,12 +171,12 @@ fn handle_connection(mut stream: TcpStream, dbs: &mut DatabaseEngine) -> std::io
                 )?;
                 todo!();
             }
-            /// TODO
+            // TODO
             Ok(Command::Auth { .. }) => {
                 write!(stream, "{}", StatusResponse::CommandNotImplemented)?;
             }
             Err(status_response) => {
-                write!(stream, "{status_response}");
+                write!(stream, "{status_response}")?;
             }
         }
     }
@@ -187,7 +187,7 @@ fn main() -> std::io::Result<()> {
     let index_path = env::args().nth(1).expect("Please pass in a .index file");
     let dict_path = env::args().nth(2).expect("Please pass in a .dict file");
 
-    let mut db = Database::new(Path::new(&index_path), Path::new(&dict_path)).unwrap();
+    let db = Database::new(Path::new(&index_path), Path::new(&dict_path)).unwrap();
     let mut dbs = DatabaseEngine { dbs: vec![db] };
 
     let listener = TcpListener::bind(format!("127.0.0.1:{DICT_SERVER_PORT}"))?;

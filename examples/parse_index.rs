@@ -1,6 +1,6 @@
 use std::{env, fs::File, io::BufReader};
 
-use server::index::Index;
+use dictd::index::Index;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = env::args().nth(1).expect("Please pass in a .index file");

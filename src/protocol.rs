@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, write};
+use std::fmt::{self, Display};
 
 use uuid::Uuid;
 
